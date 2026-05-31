@@ -98,8 +98,10 @@ function unmatched(id: string, side: "only-a" | "only-b"): ComponentDiff {
 export function buildComponentDetails(
   a: ParsedInp,
   b: ParsedInp,
-  tol: number,
+  tolerances: Partial<NumericTolerances> = {},
 ): ComponentDetails {
+  const t: NumericTolerances = { ...DEFAULT_TOLERANCES, ...tolerances };
+  const tol = t.spatialDistance;
   const cA = coordMap(a);
   const cB = coordMap(b);
 
