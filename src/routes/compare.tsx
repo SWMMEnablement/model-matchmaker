@@ -4,9 +4,11 @@ import {
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar,
   ResponsiveContainer, Tooltip,
 } from "recharts";
-import { parseInp, type ParsedInp } from "@/lib/swmm/parseInp";
+import type { ParsedInp } from "@/lib/swmm/parseInp";
+import { parseAny, type ModelFormat } from "@/lib/swmm/parseAny";
 import { scoreModels, type SimilarityReport } from "@/lib/swmm/score";
 import { CATEGORIES } from "@/lib/swmm/weights";
+import { DEFAULT_TOLERANCES, type NumericTolerances } from "@/lib/swmm/tolerances";
 import { buildComponentDetails, type ComponentDetails, type ComponentDiff } from "@/lib/swmm/details";
 import { FIXTURES, type Fixture } from "@/lib/swmm/fixtures";
 import { generatePdfReport } from "@/lib/swmm/pdfReport";
@@ -15,13 +17,13 @@ export const Route = createFileRoute("/compare")({
   head: () => ({
     meta: [
       { title: "Compare two SWMM5 models — SWMM5 Similarity Index" },
-      { name: "description", content: "Upload or preload two SWMM5 .inp files and get an instant similarity score, per-category breakdown, per-component diffs, and a downloadable PDF report." },
+      { name: "description", content: "Upload or preload two SWMM5/EPANET/ICM models and get an instant similarity score, per-category breakdown, per-component diffs, and a downloadable PDF report." },
     ],
   }),
   component: ComparePage,
 });
 
-interface LoadedFile { name: string; text: string; parsed: ParsedInp; }
+interface LoadedFile { name: string; text: string; parsed: ParsedInp; format: ModelFormat; }
 
 function ScoreDial({ value }: { value: number }) {
   const tone =
@@ -39,11 +41,13 @@ function ScoreDial({ value }: { value: number }) {
 
 async function loadFile(f: File): Promise<LoadedFile> {
   const text = await f.text();
-  return { name: f.name, text, parsed: parseInp(text) };
+  const { parsed, format } = parseAny(text);
+  return { name: f.name, text, parsed, format };
 }
 
 function loadFixture(fx: Fixture): LoadedFile {
-  return { name: fx.name, text: fx.text, parsed: parseInp(fx.text) };
+  const { parsed, format } = parseAny(fx.text, fx.format);
+  return { name: fx.name, text: fx.text, parsed, format };
 }
 
 function FileSlot({
