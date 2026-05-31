@@ -1,0 +1,107 @@
+// Per-component diff explanations rendered alongside the radar chart.
+// Built separately from score.ts so the scoring engine stays focused on
+// producing the single Bill-James-style index; this file produces the
+// human-readable "which properties matched or differed" tables.
+
+import type { ParsedInp } from "./parseInp";
+import { coordMap, matchById, matchHybrid } from "./match";
+
+export type PropStatus = "match" | "differ" | "only-a" | "only-b";
+
+export interface PropRow {
+  name: string;
+  a: string | number | null;
+  b: string | number | null;
+  status: PropStatus;
+  delta?: string;
+}
+
+export interface ComponentDiff {
+  id: string;
+  matchedBy: "id" | "spatial" | "unmatched";
+  distance?: number;
+  matched: number;
+  differed: number;
+  props: PropRow[];
+}
+
+export interface ComponentDetails {
+  junctions: ComponentDiff[];
+  conduits: ComponentDiff[];
+  subcatchments: ComponentDiff[];
+  outfalls: ComponentDiff[];
+}
+
+const eq = (a: unknown, b: unknown): boolean => a === b;
+
+const fmt = (v: number | string | null | undefined): string | number | null => {
+  if (v === undefined || v === null || v === "") return null;
+  if (typeof v === "number") return Number.isFinite(v) ? +v.toFixed(4) : null;
+  return v;
+};
+
+interface FieldSpec<T> {
+  name: string;
+  pick: (x: T) => number | string | null | undefined;
+  tol?: number;
+}
+
+function diffRows<T>(a: T, b: T, fields: FieldSpec<T>[]): PropRow[] {
+  return fields.map((f) => {
+    const av = f.pick(a);
+    const bv = f.pick(b);
+    const hasA = av !== undefined && av !== null && av !== "";
+    const hasB = bv !== undefined && bv !== null && bv !== "";
+    let status: PropStatus = "match";
+    let delta: string | undefined;
+    if (!hasA && !hasB) {
+      status = "match";
+    } else if (!hasA) {
+      status = "only-b";
+    } else if (!hasB) {
+      status = "only-a";
+    } else if (typeof av === "number" && typeof bv === "number") {
+      const d = av - bv;
+      if (Math.abs(d) > (f.tol ?? 1e-6)) {
+        status = "differ";
+        const denom = Math.max(Math.abs(av), Math.abs(bv));
+        const pct = denom > 0 ? (Math.abs(d) / denom) * 100 : 0;
+        delta = `Δ ${d > 0 ? "+" : ""}${d.toFixed(3)} (${pct.toFixed(1)}%)`;
+      }
+    } else if (!eq(av, bv)) {
+      status = "differ";
+      delta = `${av} → ${bv}`;
+    }
+    return { name: f.name, a: fmt(av), b: fmt(bv), status, delta };
+  });
+}
+
+const summarise = (rows: PropRow[]) => ({
+  matched: rows.filter((r) => r.status === "match").length,
+  differed: rows.filter((r) => r.status !== "match").length,
+});
+
+function unmatched(id: string, side: "only-a" | "only-b"): ComponentDiff {
+  return {
+    id, matchedBy: "unmatched", matched: 0, differed: 1,
+    props: [{
+      name: "(presence)",
+      a: side === "only-a" ? id : null,
+      b: side === "only-b" ? id : null,
+      status: side,
+      delta: side === "only-a" ? "Only in Model A" : "Only in Model B",
+    }],
+  };
+}
+
+export function buildComponentDetails(
+  a: ParsedInp,
+  b: ParsedInp,
+  tol: number,
+): ComponentDetails {
+  const cA = coordMap(a);
+  const cB = coordMap(b);
+
+  const jM = matchHybrid(a.junctions, b.junctions, cA, cB, tol);
+  const kM = matchById(a.conduits, b.conduits);
+  const sM = matchHybrid(a.subcatchments, b
