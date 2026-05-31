@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar,
   ResponsiveContainer, Tooltip,
@@ -7,12 +7,15 @@ import {
 import { parseInp, type ParsedInp } from "@/lib/swmm/parseInp";
 import { scoreModels, type SimilarityReport } from "@/lib/swmm/score";
 import { CATEGORIES } from "@/lib/swmm/weights";
+import { buildComponentDetails, type ComponentDetails, type ComponentDiff } from "@/lib/swmm/details";
+import { FIXTURES, type Fixture } from "@/lib/swmm/fixtures";
+import { generatePdfReport } from "@/lib/swmm/pdfReport";
 
 export const Route = createFileRoute("/compare")({
   head: () => ({
     meta: [
       { title: "Compare two SWMM5 models — SWMM5 Similarity Index" },
-      { name: "description", content: "Upload two SWMM5 .inp files and get an instant similarity score with per-category breakdown." },
+      { name: "description", content: "Upload or preload two SWMM5 .inp files and get an instant similarity score, per-category breakdown, per-component diffs, and a downloadable PDF report." },
     ],
   }),
   component: ComparePage,
@@ -39,33 +42,59 @@ async function loadFile(f: File): Promise<LoadedFile> {
   return { name: f.name, text, parsed: parseInp(text) };
 }
 
+function loadFixture(fx: Fixture): LoadedFile {
+  return { name: fx.name, text: fx.text, parsed: parseInp(fx.text) };
+}
+
 function FileSlot({
-  label, file, onPick,
-}: { label: string; file: LoadedFile | null; onPick: (f: File) => void }) {
+  label, file, onPick, onPickFixture,
+}: {
+  label: string;
+  file: LoadedFile | null;
+  onPick: (f: File) => void;
+  onPickFixture: (key: string) => void;
+}) {
   return (
-    <label className="flex cursor-pointer flex-col gap-2 rounded-lg border border-dashed border-border bg-card p-5 transition-colors hover:border-primary/60">
+    <div className="rounded-lg border border-dashed border-border bg-card p-5">
       <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">{label}</div>
       {file ? (
-        <>
+        <div className="mt-1">
           <div className="truncate font-mono text-sm text-foreground">{file.name}</div>
           <div className="text-xs text-muted-foreground">
             {file.parsed.junctions.length} junctions · {file.parsed.conduits.length} conduits ·{" "}
             {file.parsed.subcatchments.length} subcatchments
           </div>
-        </>
+        </div>
       ) : (
-        <div className="text-sm text-muted-foreground">Click to choose a .inp file</div>
+        <div className="mt-1 text-sm text-muted-foreground">Choose a .inp file or load a sample.</div>
       )}
-      <input
-        type="file"
-        accept=".inp,text/plain"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) onPick(f);
-        }}
-      />
-    </label>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <label className="cursor-pointer rounded-md border border-border bg-secondary px-3 py-1.5 text-xs font-mono hover:bg-secondary/80">
+          Upload .inp
+          <input
+            type="file"
+            accept=".inp,text/plain"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onPick(f);
+            }}
+          />
+        </label>
+        <select
+          value=""
+          onChange={(e) => { if (e.target.value) onPickFixture(e.target.value); }}
+          className="rounded-md border border-border bg-input px-2 py-1.5 text-xs font-mono cursor-pointer"
+        >
+          <option value="">Load sample…</option>
+          {FIXTURES.map((fx) => (
+            <option key={fx.key} value={fx.key} disabled={!fx.supported}>
+              {fx.name}{fx.supported ? "" : "  (preview only)"}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
   );
 }
 
@@ -90,11 +119,92 @@ function downloadCsv(report: SimilarityReport) {
   URL.revokeObjectURL(url);
 }
 
+const STATUS_TONE: Record<string, string> = {
+  match: "text-success",
+  differ: "text-warning",
+  "only-a": "text-destructive",
+  "only-b": "text-destructive",
+};
+
+function ComponentList({ rows }: { rows: ComponentDiff[] }) {
+  const [open, setOpen] = useState<string | null>(null);
+  if (rows.length === 0) {
+    return <div className="py-4 text-center text-xs text-muted-foreground">No elements of this type.</div>;
+  }
+  return (
+    <ul className="divide-y divide-border/40">
+      {rows.map((r) => {
+        const isOpen = open === r.id;
+        const tone =
+          r.matchedBy === "unmatched" ? "text-destructive" :
+          r.differed === 0 ? "text-success" :
+          r.differed <= 2 ? "text-warning" : "text-warning";
+        return (
+          <li key={r.id}>
+            <button
+              type="button"
+              onClick={() => setOpen(isOpen ? null : r.id)}
+              className="flex w-full items-center gap-3 py-2 text-left text-sm hover:bg-secondary/40 px-2 rounded cursor-pointer"
+            >
+              <span className="font-mono text-xs text-primary w-20 truncate">{r.id}</span>
+              <span className={`text-xs font-mono ${tone}`}>
+                {r.matchedBy === "unmatched"
+                  ? "UNMATCHED"
+                  : `${r.matched} match · ${r.differed} differ`}
+              </span>
+              {r.matchedBy === "spatial" && r.distance !== undefined && (
+                <span className="text-xs font-mono text-muted-foreground">
+                  spatial · {r.distance.toFixed(1)}u
+                </span>
+              )}
+              <span className="ml-auto text-xs text-muted-foreground">{isOpen ? "▾" : "▸"}</span>
+            </button>
+            {isOpen && (
+              <div className="px-2 pb-3">
+                <table className="w-full font-mono text-xs">
+                  <thead className="text-muted-foreground">
+                    <tr>
+                      <th className="text-left py-1">Property</th>
+                      <th className="text-left py-1">A</th>
+                      <th className="text-left py-1">B</th>
+                      <th className="text-left py-1">Δ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {r.props.map((p) => (
+                      <tr key={p.name} className="border-t border-border/30">
+                        <td className="py-1 pr-2">{p.name}</td>
+                        <td className="py-1 pr-2">{p.a ?? "—"}</td>
+                        <td className="py-1 pr-2">{p.b ?? "—"}</td>
+                        <td className={`py-1 pr-2 ${STATUS_TONE[p.status]}`}>{p.delta ?? (p.status === "match" ? "ok" : p.status)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+const TABS: Array<{ key: keyof ComponentDetails; label: string }> = [
+  { key: "junctions", label: "Junctions" },
+  { key: "conduits", label: "Conduits" },
+  { key: "subcatchments", label: "Subcatchments" },
+  { key: "outfalls", label: "Outfalls" },
+];
+
 function ComparePage() {
   const [a, setA] = useState<LoadedFile | null>(null);
   const [b, setB] = useState<LoadedFile | null>(null);
   const [tol, setTol] = useState(5);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<keyof ComponentDetails>("conduits");
+  const [downloading, setDownloading] = useState(false);
+  const chartRef = useRef<HTMLDivElement | null>(null);
 
   const pick = useCallback((side: "a" | "b") => async (f: File) => {
     try {
@@ -103,6 +213,27 @@ function ComparePage() {
       (side === "a" ? setA : setB)(loaded);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not read that file.");
+    }
+  }, []);
+
+  const pickFixture = useCallback((side: "a" | "b") => (key: string) => {
+    const fx = FIXTURES.find((f) => f.key === key);
+    if (!fx) return;
+    if (!fx.supported) {
+      setError(`${fx.format} is preview-only in v1 — the scoring engine is SWMM5-only. Pick a SWMM5 sample to run the comparison.`);
+      return;
+    }
+    setError(null);
+    (side === "a" ? setA : setB)(loadFixture(fx));
+  }, []);
+
+  const loadDemoPair = useCallback(() => {
+    const baseline = FIXTURES.find((f) => f.key === "swmm-baseline");
+    const edited = FIXTURES.find((f) => f.key === "swmm-edited");
+    if (baseline && edited) {
+      setError(null);
+      setA(loadFixture(baseline));
+      setB(loadFixture(edited));
     }
   }, []);
 
@@ -116,10 +247,33 @@ function ComparePage() {
     }
   }, [a, b, tol]);
 
+  const details = useMemo<ComponentDetails | null>(() => {
+    if (!a || !b) return null;
+    return buildComponentDetails(a.parsed, b.parsed, tol);
+  }, [a, b, tol]);
+
   const radarData = useMemo(() => {
     if (!report) return [];
     return CATEGORIES.map((c) => ({ category: c, score: report.categoryScores[c] }));
   }, [report]);
+
+  const downloadPdf = useCallback(async () => {
+    if (!report || !a || !b) return;
+    setDownloading(true);
+    try {
+      await generatePdfReport({
+        report,
+        details,
+        nameA: a.name,
+        nameB: b.name,
+        chartEl: chartRef.current,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "PDF generation failed.");
+    } finally {
+      setDownloading(false);
+    }
+  }, [report, details, a, b]);
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-10">
@@ -128,9 +282,22 @@ function ComparePage() {
         Both files stay on your machine — parsing and scoring run in the browser.
       </p>
 
-      <div className="mt-6 grid gap-4 md:grid-cols-2">
-        <FileSlot label="Model A" file={a} onPick={pick("a")} />
-        <FileSlot label="Model B" file={b} onPick={pick("b")} />
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={loadDemoPair}
+          className="rounded-md border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-mono text-primary hover:bg-primary/20 cursor-pointer"
+        >
+          ▶ Load demo pair (Baseline vs Calibrated)
+        </button>
+        <span className="text-xs text-muted-foreground">
+          or pick a sample / upload your own .inp below
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <FileSlot label="Model A" file={a} onPick={pick("a")} onPickFixture={pickFixture("a")} />
+        <FileSlot label="Model B" file={b} onPick={pick("b")} onPickFixture={pickFixture("b")} />
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card p-4">
@@ -151,11 +318,11 @@ function ComparePage() {
         </div>
       )}
 
-      {report && a && b && (
+      {report && a && b && details && (
         <>
           <section className="mt-8 grid gap-4 lg:grid-cols-[1fr_2fr]">
             <ScoreDial value={report.overall} />
-            <div className="rounded-lg border border-border bg-card p-4">
+            <div ref={chartRef} className="rounded-lg border border-border bg-card p-4">
               <div className="mb-2 text-xs uppercase tracking-widest text-muted-foreground">
                 Category scores
               </div>
@@ -191,6 +358,37 @@ function ComparePage() {
                 </ResponsiveContainer>
               </div>
             </div>
+          </section>
+
+          <section className="mt-6 rounded-lg border border-border bg-card p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+                  Per-component diff
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  Which properties on each matched element are identical, off, or only present on one side.
+                </div>
+              </div>
+              <div className="flex gap-1 rounded-md border border-border p-1">
+                {TABS.map((t) => {
+                  const count = details[t.key].length;
+                  return (
+                    <button
+                      key={t.key}
+                      type="button"
+                      onClick={() => setTab(t.key)}
+                      className={`rounded px-3 py-1 text-xs font-mono cursor-pointer ${
+                        tab === t.key ? "bg-primary/20 text-primary" : "text-muted-foreground hover:bg-secondary"
+                      }`}
+                    >
+                      {t.label} <span className="opacity-70">({count})</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <ComponentList rows={details[tab]} />
           </section>
 
           <section className="mt-6 grid gap-4 md:grid-cols-2">
@@ -230,14 +428,21 @@ function ComparePage() {
               </div>
               <div className="flex gap-2">
                 <button
+                  onClick={downloadPdf}
+                  disabled={downloading}
+                  className="rounded-md border border-primary/50 bg-primary/10 px-3 py-1.5 text-xs font-mono text-primary hover:bg-primary/20 disabled:opacity-50 cursor-pointer"
+                >
+                  {downloading ? "Generating…" : "↓ PDF report"}
+                </button>
+                <button
                   onClick={() => downloadJson(report)}
-                  className="rounded-md border border-border px-3 py-1.5 text-xs font-mono hover:bg-secondary"
+                  className="rounded-md border border-border px-3 py-1.5 text-xs font-mono hover:bg-secondary cursor-pointer"
                 >
                   ↓ JSON
                 </button>
                 <button
                   onClick={() => downloadCsv(report)}
-                  className="rounded-md border border-border px-3 py-1.5 text-xs font-mono hover:bg-secondary"
+                  className="rounded-md border border-border px-3 py-1.5 text-xs font-mono hover:bg-secondary cursor-pointer"
                 >
                   ↓ CSV
                 </button>
@@ -252,7 +457,7 @@ function ComparePage() {
                 </tr>
               </thead>
               <tbody>
-                {report.deductions.slice(0, 20).map((d, i) => (
+                {report.deductions.map((d, i) => (
                   <tr key={i} className="border-b border-border/40">
                     <td className="py-2 font-mono text-xs text-primary">{d.category}</td>
                     <td className="py-2">
