@@ -1,6 +1,7 @@
 import type { ParsedInp } from "./parseInp";
 import { coordMap, matchById, matchHybrid } from "./match";
 import { CATEGORIES, DEFAULT_WEIGHTS, type Category, type Weights } from "./weights";
+import { DEFAULT_TOLERANCES, type NumericTolerances } from "./tolerances";
 
 export interface Deduction {
   category: Category;
@@ -69,8 +70,11 @@ function summarize(p: ParsedInp): ModelSummary {
 
 export interface ScoreOptions {
   weights?: Partial<Weights>;
-  spatialToleranceMeters?: number;
+  tolerances?: Partial<NumericTolerances>;
 }
+
+const deadband = (delta: number, tol: number): number =>
+  Math.max(0, Math.abs(delta) - tol);
 
 export function scoreModels(
   a: ParsedInp,
@@ -78,7 +82,8 @@ export function scoreModels(
   opts: ScoreOptions = {},
 ): SimilarityReport {
   const w: Weights = { ...DEFAULT_WEIGHTS, ...(opts.weights ?? {}) };
-  const tol = opts.spatialToleranceMeters ?? 5;
+  const t: NumericTolerances = { ...DEFAULT_TOLERANCES, ...(opts.tolerances ?? {}) };
+  const tol = t.spatialDistance;
   const deductions: Deduction[] = [];
   const add = (c: Category, amount: number, label: string, detail?: string) => {
     if (amount <= 0) return;
@@ -148,7 +153,7 @@ export function scoreModels(
   // ── Geometry per matched junction ──────────────────────────────
   let invertDed = 0, depthDed = 0, coordDed = 0;
   for (const { a: x, b: y, distance } of jM.pairs) {
-    invertDed += Math.abs(x.invertElev - y.invertElev) * w.junctionInvertPerM;
+    invertDed += deadband(x.invertElev - y.invertElev, t.invertElev) * w.junctionInvertPerM;
     depthDed  += (pct(x.maxDepth, y.maxDepth) * w.junctionMaxDepthPerPct);
     if (distance && distance > 0) {
       coordDed += Math.min(distance * w.coordOffsetPerMeter, w.coordOffsetCapPerElement);
@@ -162,12 +167,12 @@ export function scoreModels(
   // ── Geometry per matched conduit ───────────────────────────────
   let lenDed = 0, slopeDed = 0, roughDed = 0;
   for (const { a: x, b: y } of kM.pairs) {
-    lenDed += pct(x.length, y.length) * w.conduitLengthPerPct;
+    lenDed += deadband(pct(x.length, y.length), t.conduitLengthPct) * w.conduitLengthPerPct;
     // approximate slope using length and invert offsets
     const sA = x.length > 0 ? Math.abs(x.inOffset - x.outOffset) / x.length : 0;
     const sB = y.length > 0 ? Math.abs(y.inOffset - y.outOffset) / y.length : 0;
     slopeDed += (Math.abs(sA - sB) / 0.001) * w.conduitSlopePer001;
-    roughDed += (Math.abs(x.roughness - y.roughness) / 0.001) * w.roughnessPer001;
+    roughDed += (deadband(x.roughness - y.roughness, t.roughness) / 0.001) * w.roughnessPer001;
   }
   if (lenDed > 0)   add("Geometry", lenDed, "Conduit length diffs",
                         `${kM.pairs.length} matched conduits`);
@@ -190,8 +195,8 @@ export function scoreModels(
   // ── Subcatchment attribute diffs ───────────────────────────────
   let areaDed = 0, impDed = 0, widthDed = 0, scSlopeDed = 0, rainDed = 0;
   for (const { a: x, b: y } of sM.pairs) {
-    areaDed   += pct(x.area, y.area)             * w.areaPerPct;
-    impDed    += Math.abs(x.percentImperv - y.percentImperv) * w.imperviousPerPct;
+    areaDed   += deadband(pct(x.area, y.area), t.areaPct) * w.areaPerPct;
+    impDed    += deadband(x.percentImperv - y.percentImperv, t.imperviousPct) * w.imperviousPerPct;
     widthDed  += pct(x.width, y.width)           * w.widthPerPct;
     scSlopeDed+= pct(x.slope, y.slope)           * w.subcatchSlopePerPct;
     if (x.raingage && y.raingage && x.raingage !== y.raingage) {

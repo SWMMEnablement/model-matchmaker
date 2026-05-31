@@ -5,6 +5,7 @@
 
 import type { ParsedInp } from "./parseInp";
 import { coordMap, matchById, matchHybrid } from "./match";
+import { DEFAULT_TOLERANCES, type NumericTolerances } from "./tolerances";
 
 export type PropStatus = "match" | "differ" | "only-a" | "only-b";
 
@@ -97,8 +98,10 @@ function unmatched(id: string, side: "only-a" | "only-b"): ComponentDiff {
 export function buildComponentDetails(
   a: ParsedInp,
   b: ParsedInp,
-  tol: number,
+  tolerances: Partial<NumericTolerances> = {},
 ): ComponentDetails {
+  const t: NumericTolerances = { ...DEFAULT_TOLERANCES, ...tolerances };
+  const tol = t.spatialDistance;
   const cA = coordMap(a);
   const cB = coordMap(b);
 
@@ -112,7 +115,7 @@ export function buildComponentDetails(
 
   const junctions: ComponentDiff[] = jM.pairs.map(({ a: x, b: y, byId, distance }) => {
     const rows = diffRows(x, y, [
-      { name: "invertElev", pick: (j) => j.invertElev, tol: 0.001 },
+      { name: "invertElev", pick: (j) => j.invertElev, tol: t.invertElev },
       { name: "maxDepth",   pick: (j) => j.maxDepth,   tol: 0.001 },
       { name: "initDepth",  pick: (j) => j.initDepth,  tol: 0.001 },
       { name: "surDepth",   pick: (j) => j.surDepth,   tol: 0.001 },
@@ -128,11 +131,12 @@ export function buildComponentDetails(
 
   const conduits: ComponentDiff[] = kM.pairs.map(({ a: x, b: y }) => {
     const sa = xA.get(x.id); const sb = xB.get(y.id);
+    const lenTol = Math.max(Math.abs(x.length), Math.abs(y.length)) * (t.conduitLengthPct / 100);
     const rows: PropRow[] = diffRows(x, y, [
       { name: "fromNode",  pick: (c) => c.fromNode },
       { name: "toNode",    pick: (c) => c.toNode },
-      { name: "length",    pick: (c) => c.length,    tol: 0.01 },
-      { name: "roughness", pick: (c) => c.roughness, tol: 0.0001 },
+      { name: "length",    pick: (c) => c.length,    tol: lenTol },
+      { name: "roughness", pick: (c) => c.roughness, tol: t.roughness },
       { name: "inOffset",  pick: (c) => c.inOffset,  tol: 0.01 },
       { name: "outOffset", pick: (c) => c.outOffset, tol: 0.01 },
     ]);
@@ -150,11 +154,12 @@ export function buildComponentDetails(
   for (const y of kM.onlyInB) conduits.push(unmatched(y.id, "only-b"));
 
   const subcatchments: ComponentDiff[] = sM.pairs.map(({ a: x, b: y, byId, distance }) => {
+    const areaTol = Math.max(Math.abs(x.area), Math.abs(y.area)) * (t.areaPct / 100);
     const rows = diffRows(x, y, [
       { name: "raingage",      pick: (s) => s.raingage },
       { name: "outlet",        pick: (s) => s.outlet },
-      { name: "area",          pick: (s) => s.area,          tol: 0.001 },
-      { name: "percentImperv", pick: (s) => s.percentImperv, tol: 0.01 },
+      { name: "area",          pick: (s) => s.area,          tol: areaTol },
+      { name: "percentImperv", pick: (s) => s.percentImperv, tol: t.imperviousPct },
       { name: "width",         pick: (s) => s.width,         tol: 0.1 },
       { name: "slope",         pick: (s) => s.slope,         tol: 0.0001 },
     ]);

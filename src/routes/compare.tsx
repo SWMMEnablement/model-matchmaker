@@ -4,9 +4,11 @@ import {
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar,
   ResponsiveContainer, Tooltip,
 } from "recharts";
-import { parseInp, type ParsedInp } from "@/lib/swmm/parseInp";
+import type { ParsedInp } from "@/lib/swmm/parseInp";
+import { parseAny, type ModelFormat } from "@/lib/swmm/parseAny";
 import { scoreModels, type SimilarityReport } from "@/lib/swmm/score";
 import { CATEGORIES } from "@/lib/swmm/weights";
+import { DEFAULT_TOLERANCES, type NumericTolerances } from "@/lib/swmm/tolerances";
 import { buildComponentDetails, type ComponentDetails, type ComponentDiff } from "@/lib/swmm/details";
 import { FIXTURES, type Fixture } from "@/lib/swmm/fixtures";
 import { generatePdfReport } from "@/lib/swmm/pdfReport";
@@ -15,13 +17,13 @@ export const Route = createFileRoute("/compare")({
   head: () => ({
     meta: [
       { title: "Compare two SWMM5 models — SWMM5 Similarity Index" },
-      { name: "description", content: "Upload or preload two SWMM5 .inp files and get an instant similarity score, per-category breakdown, per-component diffs, and a downloadable PDF report." },
+      { name: "description", content: "Upload or preload two SWMM5/EPANET/ICM models and get an instant similarity score, per-category breakdown, per-component diffs, and a downloadable PDF report." },
     ],
   }),
   component: ComparePage,
 });
 
-interface LoadedFile { name: string; text: string; parsed: ParsedInp; }
+interface LoadedFile { name: string; text: string; parsed: ParsedInp; format: ModelFormat; }
 
 function ScoreDial({ value }: { value: number }) {
   const tone =
@@ -39,11 +41,13 @@ function ScoreDial({ value }: { value: number }) {
 
 async function loadFile(f: File): Promise<LoadedFile> {
   const text = await f.text();
-  return { name: f.name, text, parsed: parseInp(text) };
+  const { parsed, format } = parseAny(text);
+  return { name: f.name, text, parsed, format };
 }
 
 function loadFixture(fx: Fixture): LoadedFile {
-  return { name: fx.name, text: fx.text, parsed: parseInp(fx.text) };
+  const { parsed, format } = parseAny(fx.text, fx.format);
+  return { name: fx.name, text: fx.text, parsed, format };
 }
 
 function FileSlot({
@@ -56,7 +60,14 @@ function FileSlot({
 }) {
   return (
     <div className="rounded-lg border border-dashed border-border bg-card p-5">
-      <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">{label}</div>
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">{label}</div>
+        {file && (
+          <span className="rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] text-primary">
+            {file.format}
+          </span>
+        )}
+      </div>
       {file ? (
         <div className="mt-1">
           <div className="truncate font-mono text-sm text-foreground">{file.name}</div>
@@ -66,14 +77,14 @@ function FileSlot({
           </div>
         </div>
       ) : (
-        <div className="mt-1 text-sm text-muted-foreground">Choose a .inp file or load a sample.</div>
+        <div className="mt-1 text-sm text-muted-foreground">Choose a .inp / .csv file or load a sample.</div>
       )}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <label className="cursor-pointer rounded-md border border-border bg-secondary px-3 py-1.5 text-xs font-mono hover:bg-secondary/80">
-          Upload .inp
+          Upload file
           <input
             type="file"
-            accept=".inp,text/plain"
+            accept=".inp,.csv,.txt,text/plain"
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];
@@ -88,8 +99,8 @@ function FileSlot({
         >
           <option value="">Load sample…</option>
           {FIXTURES.map((fx) => (
-            <option key={fx.key} value={fx.key} disabled={!fx.supported}>
-              {fx.name}{fx.supported ? "" : "  (preview only)"}
+            <option key={fx.key} value={fx.key}>
+              [{fx.format}] {fx.name}
             </option>
           ))}
         </select>
@@ -197,10 +208,70 @@ const TABS: Array<{ key: keyof ComponentDetails; label: string }> = [
   { key: "outfalls", label: "Outfalls" },
 ];
 
+const TOL_FIELDS: Array<{
+  key: keyof NumericTolerances; label: string; step: number; unit: string; hint: string;
+}> = [
+  { key: "spatialDistance",  label: "Spatial distance cutoff", step: 0.5,    unit: "map units", hint: "Max distance to pair unmatched IDs by coordinates." },
+  { key: "invertElev",       label: "Invert elevation Δ",      step: 0.001,  unit: "ft / m",    hint: "Junction invert diffs below this are ignored." },
+  { key: "conduitLengthPct", label: "Conduit length Δ",        step: 0.5,    unit: "%",         hint: "Length diffs within this % are ignored." },
+  { key: "roughness",        label: "Roughness Δ (n)",         step: 0.0005, unit: "abs",       hint: "Manning's n / HW C diffs below this are ignored." },
+  { key: "areaPct",          label: "Subcatchment area Δ",     step: 0.5,    unit: "%",         hint: "Area diffs within this % are ignored." },
+  { key: "imperviousPct",    label: "% impervious Δ",          step: 0.5,    unit: "pp",        hint: "Imperv diffs within this many points are ignored." },
+];
+
+function TolerancesPanel({
+  tolerances, setTolerances,
+}: {
+  tolerances: NumericTolerances;
+  setTolerances: (t: NumericTolerances) => void;
+}) {
+  const update = (k: keyof NumericTolerances, v: number) =>
+    setTolerances({ ...tolerances, [k]: Number.isFinite(v) ? v : 0 });
+  return (
+    <div className="mt-4 rounded-lg border border-border bg-card p-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div>
+          <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+            Matching tolerances
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Edits re-run the score and per-component diff instantly. Deltas at or below each
+            threshold count as "match" and are excluded from deductions.
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setTolerances({ ...DEFAULT_TOLERANCES })}
+          className="rounded-md border border-border px-3 py-1.5 text-xs font-mono hover:bg-secondary cursor-pointer"
+        >
+          Reset defaults
+        </button>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {TOL_FIELDS.map((f) => (
+          <label key={f.key} className="block rounded-md border border-border/60 bg-background/40 p-3">
+            <div className="flex items-baseline justify-between">
+              <span className="font-mono text-xs text-foreground">{f.label}</span>
+              <span className="font-mono text-[10px] text-muted-foreground">{f.unit}</span>
+            </div>
+            <input
+              type="number" min={0} step={f.step}
+              value={tolerances[f.key]}
+              onChange={(e) => update(f.key, parseFloat(e.target.value))}
+              className="mt-1 w-full rounded-md border border-border bg-input px-2 py-1 font-mono text-sm"
+            />
+            <div className="mt-1 text-[11px] text-muted-foreground">{f.hint}</div>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ComparePage() {
   const [a, setA] = useState<LoadedFile | null>(null);
   const [b, setB] = useState<LoadedFile | null>(null);
-  const [tol, setTol] = useState(5);
+  const [tolerances, setTolerances] = useState<NumericTolerances>({ ...DEFAULT_TOLERANCES });
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<keyof ComponentDetails>("conduits");
   const [downloading, setDownloading] = useState(false);
@@ -219,10 +290,6 @@ function ComparePage() {
   const pickFixture = useCallback((side: "a" | "b") => (key: string) => {
     const fx = FIXTURES.find((f) => f.key === key);
     if (!fx) return;
-    if (!fx.supported) {
-      setError(`${fx.format} is preview-only in v1 — the scoring engine is SWMM5-only. Pick a SWMM5 sample to run the comparison.`);
-      return;
-    }
     setError(null);
     (side === "a" ? setA : setB)(loadFixture(fx));
   }, []);
@@ -240,17 +307,17 @@ function ComparePage() {
   const report = useMemo<SimilarityReport | null>(() => {
     if (!a || !b) return null;
     try {
-      return scoreModels(a.parsed, b.parsed, { spatialToleranceMeters: tol });
+      return scoreModels(a.parsed, b.parsed, { tolerances });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Scoring failed.");
       return null;
     }
-  }, [a, b, tol]);
+  }, [a, b, tolerances]);
 
   const details = useMemo<ComponentDetails | null>(() => {
     if (!a || !b) return null;
-    return buildComponentDetails(a.parsed, b.parsed, tol);
-  }, [a, b, tol]);
+    return buildComponentDetails(a.parsed, b.parsed, tolerances);
+  }, [a, b, tolerances]);
 
   const radarData = useMemo(() => {
     if (!report) return [];
@@ -275,11 +342,16 @@ function ComparePage() {
     }
   }, [report, details, a, b]);
 
+  const formatMix = a && b && a.format !== b.format
+    ? `${a.format} vs ${b.format} — comparing across formats; engineering interpretation is approximate.`
+    : null;
+
   return (
     <main className="mx-auto max-w-6xl px-4 py-10">
-      <h1 className="font-display text-3xl font-semibold">Compare two SWMM5 models</h1>
+      <h1 className="font-display text-3xl font-semibold">Compare two hydraulic models</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        Both files stay on your machine — parsing and scoring run in the browser.
+        SWMM5, EPANET, and InfoWorks ICM files all parse into the same schema and score against
+        the same 1000-point index. Everything stays on your machine.
       </p>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -291,7 +363,7 @@ function ComparePage() {
           ▶ Load demo pair (Baseline vs Calibrated)
         </button>
         <span className="text-xs text-muted-foreground">
-          or pick a sample / upload your own .inp below
+          or pick a sample / upload your own .inp / .csv below
         </span>
       </div>
 
@@ -300,17 +372,14 @@ function ComparePage() {
         <FileSlot label="Model B" file={b} onPick={pick("b")} onPickFixture={pickFixture("b")} />
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card p-4">
-        <label className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
-          Spatial match tolerance
-        </label>
-        <input
-          type="number" min={0} step={0.5} value={tol}
-          onChange={(e) => setTol(parseFloat(e.target.value) || 0)}
-          className="w-24 rounded-md border border-border bg-input px-2 py-1 font-mono text-sm"
-        />
-        <span className="text-xs text-muted-foreground">map units (typically meters/feet of the model)</span>
-      </div>
+      {formatMix && (
+        <div className="mt-3 rounded-md border border-warning/40 bg-warning/10 p-2 text-xs text-warning">
+          {formatMix}
+        </div>
+      )}
+
+      <TolerancesPanel tolerances={tolerances} setTolerances={setTolerances} />
+
 
       {error && (
         <div className="mt-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
