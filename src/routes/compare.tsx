@@ -89,3 +89,64 @@ function downloadCsv(report: SimilarityReport) {
   a.href = url; a.download = `swmm-similarity-${report.overall}.csv`; a.click();
   URL.revokeObjectURL(url);
 }
+
+function ComparePage() {
+  const [a, setA] = useState<LoadedFile | null>(null);
+  const [b, setB] = useState<LoadedFile | null>(null);
+  const [tol, setTol] = useState(5);
+  const [error, setError] = useState<string | null>(null);
+
+  const pick = useCallback((side: "a" | "b") => async (f: File) => {
+    try {
+      setError(null);
+      const loaded = await loadFile(f);
+      (side === "a" ? setA : setB)(loaded);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not read that file.");
+    }
+  }, []);
+
+  const report = useMemo<SimilarityReport | null>(() => {
+    if (!a || !b) return null;
+    try {
+      return scoreModels(a.parsed, b.parsed, { spatialToleranceMeters: tol });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Scoring failed.");
+      return null;
+    }
+  }, [a, b, tol]);
+
+  const radarData = useMemo(() => {
+    if (!report) return [];
+    return CATEGORIES.map((c) => ({ category: c, score: report.categoryScores[c] }));
+  }, [report]);
+
+  return (
+    <main className="mx-auto max-w-6xl px-4 py-10">
+      <h1 className="font-display text-3xl font-semibold">Compare two SWMM5 models</h1>
+      <p className="mt-2 text-sm text-muted-foreground">
+        Both files stay on your machine — parsing and scoring run in the browser.
+      </p>
+
+      <div className="mt-6 grid gap-4 md:grid-cols-2">
+        <FileSlot label="Model A" file={a} onPick={pick("a")} />
+        <FileSlot label="Model B" file={b} onPick={pick("b")} />
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card p-4">
+        <label className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+          Spatial match tolerance
+        </label>
+        <input
+          type="number" min={0} step={0.5} value={tol}
+          onChange={(e) => setTol(parseFloat(e.target.value) || 0)}
+          className="w-24 rounded-md border border-border bg-input px-2 py-1 font-mono text-sm"
+        />
+        <span className="text-xs text-muted-foreground">map units (typically meters/feet of the model)</span>
+      </div>
+
+      {error && (
+        <div className="mt-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          {error}
+        </div>
+      )}
