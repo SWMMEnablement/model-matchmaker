@@ -150,3 +150,70 @@ function ComparePage() {
           {error}
         </div>
       )}
+
+      {report && a && b && (
+        <>
+          <section className="mt-8 grid gap-4 lg:grid-cols-[1fr_2fr]">
+            <ScoreDial value={report.overall} />
+            <div className="rounded-lg border border-border bg-card p-4">
+              <div className="mb-2 text-xs uppercase tracking-widest text-muted-foreground">
+                Category scores
+              </div>
+              <div style={{ width: "100%", height: 280 }}>
+                <ResponsiveContainer>
+                  <RadarChart data={radarData} outerRadius="75%">
+                    <PolarGrid stroke="var(--color-border)" />
+                    <PolarAngleAxis
+                      dataKey="category"
+                      tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }}
+                    />
+                    <PolarRadiusAxis
+                      domain={[0, 1000]} tickCount={5}
+                      tick={{ fill: "var(--color-muted-foreground)", fontSize: 10 }}
+                      stroke="var(--color-border)"
+                    />
+                    <Radar
+                      dataKey="score"
+                      stroke="var(--color-primary)"
+                      fill="var(--color-primary)"
+                      fillOpacity={0.35}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: "var(--color-popover)",
+                        border: "1px solid var(--color-border)",
+                        borderRadius: 6,
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 12,
+                      }}
+                    />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </section>
+
+          <section className="mt-6 grid gap-4 md:grid-cols-2">
+            {[["Model A", report.summary.a, a.name], ["Model B", report.summary.b, b.name]].map(
+              ([label, s, name]) => {
+                const sum = s as typeof report.summary.a;
+                return (
+                  <div key={label as string} className="rounded-lg border border-border bg-card p-4 text-sm">
+                    <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">{label as string}</div>
+                    <div className="mt-1 truncate font-mono">{name as string}</div>
+                    <div className="mt-1 text-muted-foreground italic truncate">{sum.title}</div>
+                    <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-xs">
+                      <dt className="text-muted-foreground">Units</dt><dd>{sum.flowUnits}</dd>
+                      <dt className="text-muted-foreground">Routing</dt><dd>{sum.routing}</dd>
+                      <dt className="text-muted-foreground">Junctions</dt><dd>{sum.junctions}</dd>
+                      <dt className="text-muted-foreground">Conduits</dt><dd>{sum.conduits}</dd>
+                      <dt className="text-muted-foreground">Subcatch.</dt><dd>{sum.subcatchments}</dd>
+                      <dt className="text-muted-foreground">Outfalls</dt><dd>{sum.outfalls}</dd>
+                      <dt className="text-muted-foreground">Σ length</dt><dd>{sum.totalConduitLength.toFixed(0)}</dd>
+                      <dt className="text-muted-foreground">Σ area</dt><dd>{sum.totalSubcatchArea.toFixed(2)}</dd>
+                    </dl>
+                  </div>
+                );
+              },
+            )}
+          </section>
