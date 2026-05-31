@@ -104,4 +104,81 @@ export function buildComponentDetails(
 
   const jM = matchHybrid(a.junctions, b.junctions, cA, cB, tol);
   const kM = matchById(a.conduits, b.conduits);
-  const sM = matchHybrid(a.subcatchments, b
+  const sM = matchHybrid(a.subcatchments, b.subcatchments, cA, cB, tol);
+  const oM = matchHybrid(a.outfalls, b.outfalls, cA, cB, tol);
+
+  const xA = new Map(a.xsections.map((x) => [x.link, x]));
+  const xB = new Map(b.xsections.map((x) => [x.link, x]));
+
+  const junctions: ComponentDiff[] = jM.pairs.map(({ a: x, b: y, byId, distance }) => {
+    const rows = diffRows(x, y, [
+      { name: "invertElev", pick: (j) => j.invertElev, tol: 0.001 },
+      { name: "maxDepth",   pick: (j) => j.maxDepth,   tol: 0.001 },
+      { name: "initDepth",  pick: (j) => j.initDepth,  tol: 0.001 },
+      { name: "surDepth",   pick: (j) => j.surDepth,   tol: 0.001 },
+      { name: "pondedArea", pick: (j) => j.pondedArea, tol: 0.001 },
+    ]);
+    return {
+      id: x.id, matchedBy: byId ? "id" : "spatial",
+      distance, ...summarise(rows), props: rows,
+    };
+  });
+  for (const x of jM.onlyInA) junctions.push(unmatched(x.id, "only-a"));
+  for (const y of jM.onlyInB) junctions.push(unmatched(y.id, "only-b"));
+
+  const conduits: ComponentDiff[] = kM.pairs.map(({ a: x, b: y }) => {
+    const sa = xA.get(x.id); const sb = xB.get(y.id);
+    const rows: PropRow[] = diffRows(x, y, [
+      { name: "fromNode",  pick: (c) => c.fromNode },
+      { name: "toNode",    pick: (c) => c.toNode },
+      { name: "length",    pick: (c) => c.length,    tol: 0.01 },
+      { name: "roughness", pick: (c) => c.roughness, tol: 0.0001 },
+      { name: "inOffset",  pick: (c) => c.inOffset,  tol: 0.01 },
+      { name: "outOffset", pick: (c) => c.outOffset, tol: 0.01 },
+    ]);
+    if (sa && sb) {
+      rows.push(...diffRows(sa, sb, [
+        { name: "shape",   pick: (s) => s.shape },
+        { name: "geom1",   pick: (s) => s.geom1, tol: 0.001 },
+        { name: "geom2",   pick: (s) => s.geom2, tol: 0.001 },
+        { name: "barrels", pick: (s) => s.barrels },
+      ]));
+    }
+    return { id: x.id, matchedBy: "id", ...summarise(rows), props: rows };
+  });
+  for (const x of kM.onlyInA) conduits.push(unmatched(x.id, "only-a"));
+  for (const y of kM.onlyInB) conduits.push(unmatched(y.id, "only-b"));
+
+  const subcatchments: ComponentDiff[] = sM.pairs.map(({ a: x, b: y, byId, distance }) => {
+    const rows = diffRows(x, y, [
+      { name: "raingage",      pick: (s) => s.raingage },
+      { name: "outlet",        pick: (s) => s.outlet },
+      { name: "area",          pick: (s) => s.area,          tol: 0.001 },
+      { name: "percentImperv", pick: (s) => s.percentImperv, tol: 0.01 },
+      { name: "width",         pick: (s) => s.width,         tol: 0.1 },
+      { name: "slope",         pick: (s) => s.slope,         tol: 0.0001 },
+    ]);
+    return {
+      id: x.id, matchedBy: byId ? "id" : "spatial",
+      distance, ...summarise(rows), props: rows,
+    };
+  });
+  for (const x of sM.onlyInA) subcatchments.push(unmatched(x.id, "only-a"));
+  for (const y of sM.onlyInB) subcatchments.push(unmatched(y.id, "only-b"));
+
+  const outfalls: ComponentDiff[] = oM.pairs.map(({ a: x, b: y, byId, distance }) => {
+    const rows = diffRows(x, y, [
+      { name: "invertElev", pick: (o) => o.invertElev, tol: 0.001 },
+      { name: "type",       pick: (o) => o.type },
+      { name: "stage",      pick: (o) => o.stage,      tol: 0.001 },
+    ]);
+    return {
+      id: x.id, matchedBy: byId ? "id" : "spatial",
+      distance, ...summarise(rows), props: rows,
+    };
+  });
+  for (const x of oM.onlyInA) outfalls.push(unmatched(x.id, "only-a"));
+  for (const y of oM.onlyInB) outfalls.push(unmatched(y.id, "only-b"));
+
+  return { junctions, conduits, subcatchments, outfalls };
+}
