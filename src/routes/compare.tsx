@@ -217,3 +217,87 @@ function ComparePage() {
               },
             )}
           </section>
+
+          <section className="mt-6 rounded-lg border border-border bg-card p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+                  Top deductions
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  Largest contributors to the gap from 1000.
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => downloadJson(report)}
+                  className="rounded-md border border-border px-3 py-1.5 text-xs font-mono hover:bg-secondary"
+                >
+                  ↓ JSON
+                </button>
+                <button
+                  onClick={() => downloadCsv(report)}
+                  className="rounded-md border border-border px-3 py-1.5 text-xs font-mono hover:bg-secondary"
+                >
+                  ↓ CSV
+                </button>
+              </div>
+            </div>
+            <table className="w-full text-left text-sm">
+              <thead className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+                <tr className="border-b border-border">
+                  <th className="py-2">Category</th>
+                  <th className="py-2">Reason</th>
+                  <th className="py-2 text-right">−Points</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.deductions.slice(0, 20).map((d, i) => (
+                  <tr key={i} className="border-b border-border/40">
+                    <td className="py-2 font-mono text-xs text-primary">{d.category}</td>
+                    <td className="py-2">
+                      <div>{d.label}</div>
+                      {d.detail && <div className="text-xs text-muted-foreground">{d.detail}</div>}
+                    </td>
+                    <td className="py-2 text-right font-mono">−{d.amount.toFixed(1)}</td>
+                  </tr>
+                ))}
+                {report.deductions.length === 0 && (
+                  <tr><td colSpan={3} className="py-6 text-center text-muted-foreground">
+                    No differences detected — the models scored a perfect 1000.
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          </section>
+
+          <section className="mt-6 rounded-lg border border-border bg-card p-4">
+            <div className="mb-3 text-xs font-mono uppercase tracking-widest text-muted-foreground">
+              Element matching
+            </div>
+            <table className="w-full text-sm">
+              <thead className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+                <tr className="border-b border-border">
+                  <th className="py-2 text-left">Element</th>
+                  <th className="py-2 text-right">Matched</th>
+                  <th className="py-2 text-right">Only in A</th>
+                  <th className="py-2 text-right">Only in B</th>
+                </tr>
+              </thead>
+              <tbody className="font-mono">
+                {(["junctions", "conduits", "subcatchments", "outfalls"] as const).map((k) => (
+                  <tr key={k} className="border-b border-border/40">
+                    <td className="py-2 capitalize">{k}</td>
+                    <td className="py-2 text-right text-success">{report.matchStats[k].matched}</td>
+                    <td className="py-2 text-right text-warning">{report.matchStats[k].onlyA}</td>
+                    <td className="py-2 text-right text-warning">{report.matchStats[k].onlyB}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        </>
+      )}
+    </main>
+  );
+}
