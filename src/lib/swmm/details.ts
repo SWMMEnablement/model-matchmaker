@@ -5,6 +5,7 @@
 
 import type { ParsedInp } from "./parseInp";
 import { coordMap, matchById, matchHybrid } from "./match";
+import { DEFAULT_TOLERANCES, type NumericTolerances } from "./tolerances";
 
 export type PropStatus = "match" | "differ" | "only-a" | "only-b";
 
