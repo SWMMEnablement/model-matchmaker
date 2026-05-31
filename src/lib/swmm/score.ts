@@ -125,3 +125,64 @@ export function scoreModels(
     if (ded > 0) add("Topology", ded, `Count diff: ${name}`,
                      `${va} vs ${vb} (${p.toFixed(1)}%)`);
   }
+
+  // ── Matching ───────────────────────────────────────────────────
+  const cA = coordMap(a);
+  const cB = coordMap(b);
+  const jM = matchHybrid(a.junctions, b.junctions, cA, cB, tol);
+  const kM = matchById(a.conduits, b.conduits);
+  const sM = matchHybrid(a.subcatchments, b.subcatchments, cA, cB, tol);
+  const oM = matchHybrid(a.outfalls, b.outfalls, cA, cB, tol);
+
+  const orphans =
+    jM.onlyInA.length + jM.onlyInB.length +
+    kM.onlyInA.length + kM.onlyInB.length +
+    sM.onlyInA.length + sM.onlyInB.length +
+    oM.onlyInA.length + oM.onlyInB.length;
+  if (orphans > 0) {
+    add("Topology", orphans * w.orphanElementPenalty,
+        `${orphans} unmatched elements`,
+        `Could not pair these between models (by ID or within ${tol}m).`);
+  }
+
+  // ── Geometry per matched junction ──────────────────────────────
+  let invertDed = 0, depthDed = 0, coordDed = 0;
+  for (const { a: x, b: y, distance } of jM.pairs) {
+    invertDed += Math.abs(x.invertElev - y.invertElev) * w.junctionInvertPerM;
+    depthDed  += (pct(x.maxDepth, y.maxDepth) * w.junctionMaxDepthPerPct);
+    if (distance && distance > 0) {
+      coordDed += Math.min(distance * w.coordOffsetPerMeter, w.coordOffsetCapPerElement);
+    }
+  }
+  if (invertDed > 0) add("Geometry", invertDed, "Junction invert elevation diffs",
+                         `${jM.pairs.length} matched junctions`);
+  if (depthDed > 0)  add("Geometry", depthDed,  "Junction max-depth diffs");
+  if (coordDed > 0)  add("Geometry", coordDed,  "Coordinate offsets on spatially matched nodes");
+
+  // ── Geometry per matched conduit ───────────────────────────────
+  let lenDed = 0, slopeDed = 0, roughDed = 0;
+  for (const { a: x, b: y } of kM.pairs) {
+    lenDed += pct(x.length, y.length) * w.conduitLengthPerPct;
+    // approximate slope using length and invert offsets
+    const sA = x.length > 0 ? Math.abs(x.inOffset - x.outOffset) / x.length : 0;
+    const sB = y.length > 0 ? Math.abs(y.inOffset - y.outOffset) / y.length : 0;
+    slopeDed += (Math.abs(sA - sB) / 0.001) * w.conduitSlopePer001;
+    roughDed += (Math.abs(x.roughness - y.roughness) / 0.001) * w.roughnessPer001;
+  }
+  if (lenDed > 0)   add("Geometry", lenDed, "Conduit length diffs",
+                        `${kM.pairs.length} matched conduits`);
+  if (slopeDed > 0) add("Geometry", slopeDed, "Conduit slope diffs");
+  if (roughDed > 0) add("Hydraulics", roughDed, "Manning's n diffs on conduits");
+
+  // ── Xsection comparison (matched by link id) ───────────────────
+  const xA = new Map(a.xsections.map((x) => [x.link, x]));
+  const xB = new Map(b.xsections.map((x) => [x.link, x]));
+  let shapeDed = 0, geomDed = 0;
+  for (const { a: x } of kM.pairs) {
+    const sa = xA.get(x.id); const sb = xB.get(x.id);
+    if (!sa || !sb) continue;
+    if (sa.shape !== sb.shape) shapeDed += w.xsectionShapeMismatch;
+    geomDed += pct(sa.geom1, sb.geom1) * w.xsectionGeom1PerPct;
+  }
+  if (shapeDed > 0) add("Hydraulics", shapeDed, "Cross-section shape mismatches");
+  if (geomDed > 0)  add("Hydraulics", geomDed,  "Cross-section size (geom1) diffs");
