@@ -103,3 +103,42 @@ export function parseInp(text: string): ParsedInp {
     geom1: num(r[2]), geom2: num(r[3]), geom3: num(r[4]), geom4: num(r[5]),
     barrels: num(r[6], 1),
   }));
+
+  const subcatchments: SwmmSubcatchment[] = (sections.SUBCATCHMENTS ?? []).map((r) => ({
+    id: r[0], raingage: r[1], outlet: r[2],
+    area: num(r[3]), percentImperv: num(r[4]), width: num(r[5]), slope: num(r[6]),
+  }));
+  const subareas: SwmmSubarea[] = (sections.SUBAREAS ?? []).map((r) => ({
+    subcatch: r[0], nImperv: num(r[1]), nPerv: num(r[2]),
+    sImperv: num(r[3]), sPerv: num(r[4]), pctZero: num(r[5]),
+  }));
+  const infiltration: SwmmInfiltration[] = (sections.INFILTRATION ?? []).map((r) => ({
+    subcatch: r[0], params: r.slice(1).map((v) => num(v)),
+  }));
+  const pumps: SwmmPump[] = (sections.PUMPS ?? []).map((r) => ({
+    id: r[0], fromNode: r[1], toNode: r[2],
+  }));
+  const weirs: SwmmWeir[] = (sections.WEIRS ?? []).map((r) => ({
+    id: r[0], fromNode: r[1], toNode: r[2], type: (r[3] ?? "").toUpperCase(),
+  }));
+  const orifices: SwmmOrifice[] = (sections.ORIFICES ?? []).map((r) => ({
+    id: r[0], fromNode: r[1], toNode: r[2], type: (r[3] ?? "").toUpperCase(),
+  }));
+  const raingages: SwmmRaingage[] = (sections.RAINGAGES ?? []).map((r) => ({
+    id: r[0], format: (r[1] ?? "").toUpperCase(), interval: r[2] ?? "",
+  }));
+  const coordinates: SwmmCoord[] = (sections.COORDINATES ?? []).map((r) => ({
+    id: r[0], x: num(r[1]), y: num(r[2]),
+  }));
+
+  return {
+    title: titleLines.join(" ").slice(0, 200),
+    options,
+    junctions, outfalls, storage,
+    conduits, xsections,
+    subcatchments, subareas, infiltration,
+    pumps, weirs, orifices,
+    raingages, coordinates,
+    sectionLineCounts,
+  };
+}
