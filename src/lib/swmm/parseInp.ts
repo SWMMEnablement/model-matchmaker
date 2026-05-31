@@ -1,5 +1,4 @@
 // SWMM5 .inp parser — section-aware, whitespace tokenized.
-// Returns a structured ParsedInp the scoring engine consumes.
 
 export interface SwmmJunction {
   id: string;
@@ -12,7 +11,7 @@ export interface SwmmJunction {
 export interface SwmmOutfall {
   id: string;
   invertElev: number;
-  type: string; // FREE, FIXED, TIDAL, TIMESERIES, NORMAL
+  type: string;
   stage: number;
 }
 export interface SwmmConduit {
@@ -54,11 +53,7 @@ export interface SwmmInfiltration {
   subcatch: string;
   params: number[];
 }
-export interface SwmmCoord {
-  id: string;
-  x: number;
-  y: number;
-}
+export interface SwmmCoord { id: string; x: number; y: number; }
 export interface SwmmPump { id: string; fromNode: string; toNode: string; }
 export interface SwmmWeir { id: string; fromNode: string; toNode: string; type: string; }
 export interface SwmmOrifice { id: string; fromNode: string; toNode: string; type: string; }
@@ -116,13 +111,9 @@ export function parseInp(text: string): ParsedInp {
       if (!sections[current]) sections[current] = [];
       continue;
     }
-    if (current === "TITLE") {
-      titleLines.push(line);
-      continue;
-    }
+    if (current === "TITLE") { titleLines.push(line); continue; }
     if (!current) continue;
-    const tokens = line.split(/\s+/);
-    sections[current].push(tokens);
+    sections[current].push(line.split(/\s+/));
   }
 
   const sectionLineCounts: Record<string, number> = {};
@@ -145,53 +136,25 @@ export function parseInp(text: string): ParsedInp {
   };
 
   const junctions: SwmmJunction[] = (sections.JUNCTIONS ?? []).map((r) => ({
-    id: r[0],
-    invertElev: num(r[1]),
-    maxDepth: num(r[2]),
-    initDepth: num(r[3]),
-    surDepth: num(r[4]),
-    pondedArea: num(r[5]),
+    id: r[0], invertElev: num(r[1]), maxDepth: num(r[2]),
+    initDepth: num(r[3]), surDepth: num(r[4]), pondedArea: num(r[5]),
   }));
 
   const outfalls: SwmmOutfall[] = (sections.OUTFALLS ?? []).map((r) => ({
-    id: r[0],
-    invertElev: num(r[1]),
-    type: (r[2] ?? "").toUpperCase(),
-    stage: num(r[3]),
+    id: r[0], invertElev: num(r[1]),
+    type: (r[2] ?? "").toUpperCase(), stage: num(r[3]),
   }));
 
   const storage: SwmmStorage[] = (sections.STORAGE ?? []).map((r) => ({
-    id: r[0],
-    invertElev: num(r[1]),
-    maxDepth: num(r[2]),
+    id: r[0], invertElev: num(r[1]), maxDepth: num(r[2]),
   }));
 
   const conduits: SwmmConduit[] = (sections.CONDUITS ?? []).map((r) => ({
-    id: r[0],
-    fromNode: r[1],
-    toNode: r[2],
-    length: num(r[3]),
-    roughness: num(r[4]),
-    inOffset: num(r[5]),
-    outOffset: num(r[6]),
+    id: r[0], fromNode: r[1], toNode: r[2],
+    length: num(r[3]), roughness: num(r[4]),
+    inOffset: num(r[5]), outOffset: num(r[6]),
   }));
 
   const xsections: SwmmXsection[] = (sections.XSECTIONS ?? []).map((r) => ({
-    link: r[0],
-    shape: (r[1] ?? "").toUpperCase(),
-    geom1: num(r[2]),
-    geom2: num(r[3]),
-    geom3: num(r[4]),
-    geom4: num(r[5]),
-    barrels: num(r[6], 1),
-  }));
-
-  const subcatchments: SwmmSubcatchment[] = (sections.SUBCATCHMENTS ?? []).map((r) => ({
-    id: r[0],
-    raingage: r[1],
-    outlet: r[2],
-    area: num(r[3]),
-    percentImperv: num(r[4]),
-    width: num(r[5]),
-    slope: num(r[6]),
-  }
+    link: r[0], shape: (r[1] ?? "").toUpperCase(),
+    geom1: num(r[2]), geom2: num(r[3]), geom3: num(r[4]), geom4: num(r[
