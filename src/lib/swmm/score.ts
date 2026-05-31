@@ -186,3 +186,64 @@ export function scoreModels(
   }
   if (shapeDed > 0) add("Hydraulics", shapeDed, "Cross-section shape mismatches");
   if (geomDed > 0)  add("Hydraulics", geomDed,  "Cross-section size (geom1) diffs");
+
+  // ── Subcatchment attribute diffs ───────────────────────────────
+  let areaDed = 0, impDed = 0, widthDed = 0, scSlopeDed = 0, rainDed = 0;
+  for (const { a: x, b: y } of sM.pairs) {
+    areaDed   += pct(x.area, y.area)             * w.areaPerPct;
+    impDed    += Math.abs(x.percentImperv - y.percentImperv) * w.imperviousPerPct;
+    widthDed  += pct(x.width, y.width)           * w.widthPerPct;
+    scSlopeDed+= pct(x.slope, y.slope)           * w.subcatchSlopePerPct;
+    if (x.raingage && y.raingage && x.raingage !== y.raingage) {
+      rainDed += w.raingageMismatch;
+    }
+  }
+  if (areaDed > 0)    add("Subcatchments", areaDed,    "Subcatchment area diffs");
+  if (impDed > 0)     add("Subcatchments", impDed,     "%-impervious diffs");
+  if (widthDed > 0)   add("Subcatchments", widthDed,   "Subcatchment width diffs");
+  if (scSlopeDed > 0) add("Subcatchments", scSlopeDed, "Subcatchment slope diffs");
+  if (rainDed > 0)    add("Hydrology", rainDed, "Raingage assignment differs on matched subcatchments");
+
+  // ── Boundary: outfall types ────────────────────────────────────
+  let outTypeDed = 0;
+  for (const { a: x, b: y } of oM.pairs) {
+    if (x.type && y.type && x.type !== y.type) outTypeDed += w.outfallTypeMismatch;
+  }
+  if (outTypeDed > 0) add("Boundary", outTypeDed, "Outfall type mismatches");
+
+  // ── Roll up per category with caps ─────────────────────────────
+  const categoryDeductions: Record<Category, number> = {
+    Topology: 0, Geometry: 0, Hydraulics: 0,
+    Subcatchments: 0, Hydrology: 0, Boundary: 0, Simulation: 0,
+  };
+  for (const d of deductions) categoryDeductions[d.category] += d.amount;
+
+  const categoryScores: Record<Category, number> = {
+    Topology: 0, Geometry: 0, Hydraulics: 0,
+    Subcatchments: 0, Hydrology: 0, Boundary: 0, Simulation: 0,
+  };
+  let totalCapped = 0;
+  for (const c of CATEGORIES) {
+    const capped = Math.min(categoryDeductions[c], w.capPerCategory);
+    totalCapped += capped;
+    // Each category's local score is 1000-baseline indicator scaled to the cap
+    categoryScores[c] = Math.max(0, Math.round(1000 - (capped / w.capPerCategory) * 1000));
+  }
+  const overall = Math.max(0, Math.round(1000 - totalCapped));
+
+  // Sort deductions largest-first for the UI top-N table
+  deductions.sort((x, y) => y.amount - x.amount);
+
+  return {
+    overall, baseline: 1000,
+    categoryScores, categoryDeductions,
+    deductions,
+    matchStats: {
+      junctions:     { matched: jM.pairs.length, onlyA: jM.onlyInA.length, onlyB: jM.onlyInB.length },
+      conduits:      { matched: kM.pairs.length, onlyA: kM.onlyInA.length, onlyB: kM.onlyInB.length },
+      subcatchments: { matched: sM.pairs.length, onlyA: sM.onlyInA.length, onlyB: sM.onlyInB.length },
+      outfalls:      { matched: oM.pairs.length, onlyA: oM.onlyInA.length, onlyB: oM.onlyInB.length },
+    },
+    summary: { a: summarize(a), b: summarize(b) },
+  };
+}
