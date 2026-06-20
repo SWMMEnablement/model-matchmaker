@@ -170,8 +170,8 @@ export function OutputComparePanel() {
     try {
       setError(null);
       const text = await f.text();
-      const parsed = parseRpt(text);
-      (side === "a" ? setA : setB)({ name: f.name, parsed });
+      const { parsed, format } = parseAnyRpt(text);
+      (side === "a" ? setA : setB)({ name: f.name, parsed, format });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not read .rpt file");
     }
