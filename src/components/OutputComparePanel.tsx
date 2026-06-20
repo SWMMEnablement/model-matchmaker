@@ -93,7 +93,14 @@ function RptSlot({
 }) {
   return (
     <div className="rounded-lg border border-dashed border-border bg-card p-4">
-      <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">{label}</div>
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">{label}</div>
+        {file && (
+          <span className="rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] text-primary">
+            {file.format}
+          </span>
+        )}
+      </div>
       {file ? (
         <div className="mt-1">
           <div className="truncate font-mono text-sm">{file.name}</div>
@@ -103,13 +110,13 @@ function RptSlot({
           </div>
         </div>
       ) : (
-        <div className="mt-1 text-sm text-muted-foreground">Upload a .rpt file or load a sample run.</div>
+        <div className="mt-1 text-sm text-muted-foreground">Upload a .rpt / .csv file or load a sample run.</div>
       )}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <label className="cursor-pointer rounded-md border border-border bg-secondary px-3 py-1.5 text-xs font-mono hover:bg-secondary/80">
-          Upload .rpt
+          Upload file
           <input
-            type="file" accept=".rpt,.txt,text/plain" className="hidden"
+            type="file" accept=".rpt,.csv,.txt,text/plain" className="hidden"
             onChange={async (e) => {
               const f = e.target.files?.[0];
               if (f) onPick(f);
@@ -123,7 +130,7 @@ function RptSlot({
         >
           <option value="">Load sample run…</option>
           {RPT_FIXTURES.map((fx) => (
-            <option key={fx.key} value={fx.key}>{fx.name}</option>
+            <option key={fx.key} value={fx.key}>[{fx.format}] {fx.name}</option>
           ))}
         </select>
       </div>
