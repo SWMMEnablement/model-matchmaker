@@ -1,11 +1,11 @@
-// Sample SWMM5 .rpt output fixtures preloaded on /compare. These mimic the
-// "Node Depth Summary / Link Flow Summary / Subcatchment Runoff Summary /
-// Continuity" sections of a real EPA SWMM5 .rpt file so the output-compare
-// engine can exercise its full pipeline against a known pair.
+// Sample output fixtures preloaded on /compare. Mix of SWMM5 .rpt, ICM CSV
+// result exports, and EPANET .rpt so users can run cross-format output diffs
+// (SWMM↔SWMM, SWMM↔ICM, SWMM↔EPANET).
 
 export interface RptFixture {
   key: string;
   name: string;
+  format: "SWMM5" | "ICM" | "EPANET";
   description: string;
   text: string;
 }
@@ -142,17 +142,105 @@ const EDITED_RPT = `
   S3                        25.00     0.00     0.10   11.10    13.80     0.44    0.171   0.552
 `;
 
+const ICM_EDITED = `! InfoWorks ICM CSV results export
+TABLE,sim_node
+ID,MaxDepth,AvgDepth,MaxHGL,FloodVolume,HoursFlooded
+J1,1.16,0.44,101.16,0,0
+J2,1.40,0.57,99.82,0,0
+J3,1.55,0.64,98.55,0.011,0.22
+J4,1.70,0.73,97.20,0,0
+O1,0.99,0.41,94.99,0,0
+
+TABLE,sim_link
+ID,MaxFlow,MaxVelocity,MaxDepthFull
+C1,0.248,1.94,0.68
+C2,0.338,2.04,0.71
+C3,0.458,2.22,0.66
+C4,0.608,2.46,0.63
+
+TABLE,sim_subcatchment
+ID,TotalRunoffVolume,PeakRunoff,TotalInfil,RunoffCoeff
+S1,0.395,0.200,9.20,0.628
+S2,0.315,0.225,7.30,0.704
+S3,0.448,0.173,10.90,0.560
+
+TABLE,sim_continuity
+Runoff,FlowRouting
+-0.16,0.50
+`;
+
+const EPANET_A = `  EPANET 2.2 - Pressure Network Results
+
+  Node Results at 0:00:00 Hrs:
+  ----------------------------------------------------------
+  Node            Demand     Head    Pressure   Quality
+  ----------------------------------------------------------
+  J1              0.00       150.00  50.00      0.00
+  J2              50.00      145.00  45.00      0.00
+  J3              30.00      140.00  40.00      0.00
+
+  Link Results at 0:00:00 Hrs:
+  ----------------------------------------------------------
+  Link            Flow       Velocity   Headloss
+  ----------------------------------------------------------
+  P1              80.00      1.80       5.00
+  P2              50.00      1.40       3.00
+  P3              30.00      1.10       2.00
+`;
+
+const EPANET_B = `  EPANET 2.2 - Pressure Network Results
+
+  Node Results at 0:00:00 Hrs:
+  ----------------------------------------------------------
+  Node            Demand     Head    Pressure   Quality
+  ----------------------------------------------------------
+  J1              0.00       150.00  50.50      0.00
+  J2              50.00      144.00  44.20      0.00
+  J3              30.00      138.50  38.80      0.00
+
+  Link Results at 0:00:00 Hrs:
+  ----------------------------------------------------------
+  Link            Flow       Velocity   Headloss
+  ----------------------------------------------------------
+  P1              82.00      1.84       5.20
+  P2              52.00      1.46       3.20
+  P3              31.50      1.16       2.10
+`;
+
 export const RPT_FIXTURES: RptFixture[] = [
   {
     key: "rpt-baseline",
     name: "SWMM5 — Baseline run.rpt",
+    format: "SWMM5",
     description: "Output of the baseline network for a 25 mm storm.",
     text: BASELINE_RPT,
   },
   {
     key: "rpt-edited",
     name: "SWMM5 — Calibrated run.rpt",
+    format: "SWMM5",
     description: "Same storm, calibrated parameters → slightly higher peaks and a flooded node.",
     text: EDITED_RPT,
+  },
+  {
+    key: "icm-edited",
+    name: "ICM — Calibrated CSV export",
+    format: "ICM",
+    description: "Same network, ICM-format results. Pair with a SWMM .rpt to diff cross-platform.",
+    text: ICM_EDITED,
+  },
+  {
+    key: "epanet-a",
+    name: "EPANET — Run A.rpt",
+    format: "EPANET",
+    description: "Pressure-network snapshot. Node 'depth' columns map to pressure.",
+    text: EPANET_A,
+  },
+  {
+    key: "epanet-b",
+    name: "EPANET — Run B.rpt",
+    format: "EPANET",
+    description: "Same network, slightly different demand pattern.",
+    text: EPANET_B,
   },
 ];

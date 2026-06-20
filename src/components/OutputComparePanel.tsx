@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
-import { parseRpt, type ParsedRpt } from "@/lib/swmm/parseRpt";
+import type { ParsedRpt } from "@/lib/swmm/parseRpt";
+import { parseAnyRpt, type RptFormat } from "@/lib/swmm/parseAnyRpt";
 import {
   compareOutputs,
   DEFAULT_OUTPUT_TOLERANCES,
@@ -9,10 +10,11 @@ import {
 } from "@/lib/swmm/outputCompare";
 import { RPT_FIXTURES, type RptFixture } from "@/lib/swmm/rptFixtures";
 
-interface LoadedRpt { name: string; parsed: ParsedRpt; }
+interface LoadedRpt { name: string; parsed: ParsedRpt; format: RptFormat; }
 
 function loadFixture(fx: RptFixture): LoadedRpt {
-  return { name: fx.name, parsed: parseRpt(fx.text) };
+  const { parsed, format } = parseAnyRpt(fx.text, fx.format);
+  return { name: fx.name, parsed, format };
 }
 
 const STATUS_TONE: Record<string, string> = {
@@ -91,7 +93,14 @@ function RptSlot({
 }) {
   return (
     <div className="rounded-lg border border-dashed border-border bg-card p-4">
-      <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">{label}</div>
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">{label}</div>
+        {file && (
+          <span className="rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] text-primary">
+            {file.format}
+          </span>
+        )}
+      </div>
       {file ? (
         <div className="mt-1">
           <div className="truncate font-mono text-sm">{file.name}</div>
@@ -101,13 +110,13 @@ function RptSlot({
           </div>
         </div>
       ) : (
-        <div className="mt-1 text-sm text-muted-foreground">Upload a .rpt file or load a sample run.</div>
+        <div className="mt-1 text-sm text-muted-foreground">Upload a .rpt / .csv file or load a sample run.</div>
       )}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <label className="cursor-pointer rounded-md border border-border bg-secondary px-3 py-1.5 text-xs font-mono hover:bg-secondary/80">
-          Upload .rpt
+          Upload file
           <input
-            type="file" accept=".rpt,.txt,text/plain" className="hidden"
+            type="file" accept=".rpt,.csv,.txt,text/plain" className="hidden"
             onChange={async (e) => {
               const f = e.target.files?.[0];
               if (f) onPick(f);
@@ -121,7 +130,7 @@ function RptSlot({
         >
           <option value="">Load sample run…</option>
           {RPT_FIXTURES.map((fx) => (
-            <option key={fx.key} value={fx.key}>{fx.name}</option>
+            <option key={fx.key} value={fx.key}>[{fx.format}] {fx.name}</option>
           ))}
         </select>
       </div>
@@ -168,8 +177,8 @@ export function OutputComparePanel() {
     try {
       setError(null);
       const text = await f.text();
-      const parsed = parseRpt(text);
-      (side === "a" ? setA : setB)({ name: f.name, parsed });
+      const { parsed, format } = parseAnyRpt(text);
+      (side === "a" ? setA : setB)({ name: f.name, parsed, format });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not read .rpt file");
     }
@@ -181,9 +190,10 @@ export function OutputComparePanel() {
     (side === "a" ? setA : setB)(loadFixture(fx));
   }, []);
 
-  const loadDemo = useCallback(() => {
-    setA(loadFixture(RPT_FIXTURES[0]));
-    setB(loadFixture(RPT_FIXTURES[1]));
+  const loadPair = useCallback((keyA: string, keyB: string) => {
+    const fa = RPT_FIXTURES.find((f) => f.key === keyA);
+    const fb = RPT_FIXTURES.find((f) => f.key === keyB);
+    if (fa && fb) { setError(null); setA(loadFixture(fa)); setB(loadFixture(fb)); }
   }, []);
 
   const report = useMemo<OutputReport | null>(() => {
@@ -192,29 +202,48 @@ export function OutputComparePanel() {
     catch (e) { setError(e instanceof Error ? e.message : "Output compare failed"); return null; }
   }, [a, b, tol]);
 
+  const formatMix = a && b && a.format !== b.format
+    ? `${a.format} vs ${b.format} — comparing outputs across simulators; treat the score as a rough congruence check, not a calibration metric.`
+    : null;
+
   return (
     <section className="mt-10 rounded-lg border border-border bg-card/40 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="font-display text-xl font-semibold">Output comparison (.rpt)</h2>
+          <h2 className="font-display text-xl font-semibold">Output comparison (.rpt / .csv)</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Pair the simulation reports produced by each model. We diff node depths/HGL, link flows,
-            subcatchment runoff, and continuity errors — independent of the input similarity above.
+            Pair the simulation reports produced by each model — SWMM5 .rpt, InfoWorks ICM CSV
+            results, or EPANET .rpt. We diff node depths/HGL/pressure, link flows, subcatchment
+            runoff, and continuity errors. Cross-format pairs (SWMM↔ICM, SWMM↔EPANET) are matched
+            by element ID.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={loadDemo}
-          className="rounded-md border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-mono text-primary hover:bg-primary/20 cursor-pointer"
-        >
-          ▶ Load demo run pair
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => loadPair("rpt-baseline", "rpt-edited")}
+            className="rounded-md border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-mono text-primary hover:bg-primary/20 cursor-pointer">
+            ▶ SWMM vs SWMM
+          </button>
+          <button type="button" onClick={() => loadPair("rpt-baseline", "icm-edited")}
+            className="rounded-md border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-mono text-primary hover:bg-primary/20 cursor-pointer">
+            ▶ SWMM vs ICM
+          </button>
+          <button type="button" onClick={() => loadPair("epanet-a", "epanet-b")}
+            className="rounded-md border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-mono text-primary hover:bg-primary/20 cursor-pointer">
+            ▶ EPANET vs EPANET
+          </button>
+        </div>
       </div>
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">
-        <RptSlot label="Run A .rpt" file={a} onPick={pick("a")} onPickFixture={pickFx("a")} />
-        <RptSlot label="Run B .rpt" file={b} onPick={pick("b")} onPickFixture={pickFx("b")} />
+        <RptSlot label="Run A" file={a} onPick={pick("a")} onPickFixture={pickFx("a")} />
+        <RptSlot label="Run B" file={b} onPick={pick("b")} onPickFixture={pickFx("b")} />
       </div>
+
+      {formatMix && (
+        <div className="mt-3 rounded-md border border-warning/40 bg-warning/10 p-2 text-xs text-warning">
+          {formatMix}
+        </div>
+      )}
 
       <div className="mt-4 rounded-lg border border-border bg-background/40 p-4">
         <div className="mb-2 flex items-center justify-between">
