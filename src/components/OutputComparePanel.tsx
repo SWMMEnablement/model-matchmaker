@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
-import { parseRpt, type ParsedRpt } from "@/lib/swmm/parseRpt";
+import type { ParsedRpt } from "@/lib/swmm/parseRpt";
+import { parseAnyRpt, type RptFormat } from "@/lib/swmm/parseAnyRpt";
 import {
   compareOutputs,
   DEFAULT_OUTPUT_TOLERANCES,
@@ -9,10 +10,11 @@ import {
 } from "@/lib/swmm/outputCompare";
 import { RPT_FIXTURES, type RptFixture } from "@/lib/swmm/rptFixtures";
 
-interface LoadedRpt { name: string; parsed: ParsedRpt; }
+interface LoadedRpt { name: string; parsed: ParsedRpt; format: RptFormat; }
 
 function loadFixture(fx: RptFixture): LoadedRpt {
-  return { name: fx.name, parsed: parseRpt(fx.text) };
+  const { parsed, format } = parseAnyRpt(fx.text, fx.format);
+  return { name: fx.name, parsed, format };
 }
 
 const STATUS_TONE: Record<string, string> = {
