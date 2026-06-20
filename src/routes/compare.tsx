@@ -12,6 +12,7 @@ import { DEFAULT_TOLERANCES, type NumericTolerances } from "@/lib/swmm/tolerance
 import { buildComponentDetails, type ComponentDetails, type ComponentDiff } from "@/lib/swmm/details";
 import { FIXTURES, type Fixture } from "@/lib/swmm/fixtures";
 import { generatePdfReport } from "@/lib/swmm/pdfReport";
+import { OutputComparePanel } from "@/components/OutputComparePanel";
 
 export const Route = createFileRoute("/compare")({
   head: () => ({
@@ -572,6 +573,8 @@ function ComparePage() {
           </section>
         </>
       )}
+
+      <OutputComparePanel />
     </main>
   );
 }
