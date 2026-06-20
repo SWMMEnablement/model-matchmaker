@@ -190,9 +190,10 @@ export function OutputComparePanel() {
     (side === "a" ? setA : setB)(loadFixture(fx));
   }, []);
 
-  const loadDemo = useCallback(() => {
-    setA(loadFixture(RPT_FIXTURES[0]));
-    setB(loadFixture(RPT_FIXTURES[1]));
+  const loadPair = useCallback((keyA: string, keyB: string) => {
+    const fa = RPT_FIXTURES.find((f) => f.key === keyA);
+    const fb = RPT_FIXTURES.find((f) => f.key === keyB);
+    if (fa && fb) { setError(null); setA(loadFixture(fa)); setB(loadFixture(fb)); }
   }, []);
 
   const report = useMemo<OutputReport | null>(() => {
@@ -201,29 +202,48 @@ export function OutputComparePanel() {
     catch (e) { setError(e instanceof Error ? e.message : "Output compare failed"); return null; }
   }, [a, b, tol]);
 
+  const formatMix = a && b && a.format !== b.format
+    ? `${a.format} vs ${b.format} — comparing outputs across simulators; treat the score as a rough congruence check, not a calibration metric.`
+    : null;
+
   return (
     <section className="mt-10 rounded-lg border border-border bg-card/40 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="font-display text-xl font-semibold">Output comparison (.rpt)</h2>
+          <h2 className="font-display text-xl font-semibold">Output comparison (.rpt / .csv)</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Pair the simulation reports produced by each model. We diff node depths/HGL, link flows,
-            subcatchment runoff, and continuity errors — independent of the input similarity above.
+            Pair the simulation reports produced by each model — SWMM5 .rpt, InfoWorks ICM CSV
+            results, or EPANET .rpt. We diff node depths/HGL/pressure, link flows, subcatchment
+            runoff, and continuity errors. Cross-format pairs (SWMM↔ICM, SWMM↔EPANET) are matched
+            by element ID.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={loadDemo}
-          className="rounded-md border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-mono text-primary hover:bg-primary/20 cursor-pointer"
-        >
-          ▶ Load demo run pair
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => loadPair("rpt-baseline", "rpt-edited")}
+            className="rounded-md border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-mono text-primary hover:bg-primary/20 cursor-pointer">
+            ▶ SWMM vs SWMM
+          </button>
+          <button type="button" onClick={() => loadPair("rpt-baseline", "icm-edited")}
+            className="rounded-md border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-mono text-primary hover:bg-primary/20 cursor-pointer">
+            ▶ SWMM vs ICM
+          </button>
+          <button type="button" onClick={() => loadPair("epanet-a", "epanet-b")}
+            className="rounded-md border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-mono text-primary hover:bg-primary/20 cursor-pointer">
+            ▶ EPANET vs EPANET
+          </button>
+        </div>
       </div>
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">
-        <RptSlot label="Run A .rpt" file={a} onPick={pick("a")} onPickFixture={pickFx("a")} />
-        <RptSlot label="Run B .rpt" file={b} onPick={pick("b")} onPickFixture={pickFx("b")} />
+        <RptSlot label="Run A" file={a} onPick={pick("a")} onPickFixture={pickFx("a")} />
+        <RptSlot label="Run B" file={b} onPick={pick("b")} onPickFixture={pickFx("b")} />
       </div>
+
+      {formatMix && (
+        <div className="mt-3 rounded-md border border-warning/40 bg-warning/10 p-2 text-xs text-warning">
+          {formatMix}
+        </div>
+      )}
 
       <div className="mt-4 rounded-lg border border-border bg-background/40 p-4">
         <div className="mb-2 flex items-center justify-between">
