@@ -9,6 +9,7 @@ import {
   type OutputElementDiff,
 } from "@/lib/swmm/outputCompare";
 import { RPT_FIXTURES, type RptFixture } from "@/lib/swmm/rptFixtures";
+import { downloadOutputCsv } from "@/lib/swmm/outputCsv";
 
 interface LoadedRpt { name: string; parsed: ParsedRpt; format: RptFormat; }
 
@@ -333,6 +334,14 @@ export function OutputComparePanel() {
               <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
                 Per-element output diff
               </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => downloadOutputCsv(report, `output-diff-${a?.name ?? "a"}-vs-${b?.name ?? "b"}.csv`)}
+                  className="rounded-md border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-mono text-primary hover:bg-primary/20 cursor-pointer"
+                >
+                  ↓ Export CSV
+                </button>
               <div className="flex gap-1 rounded-md border border-border p-1">
                 {OUTPUT_TABS.map((t) => (
                   <button
@@ -346,6 +355,7 @@ export function OutputComparePanel() {
                     {t.label} ({report.elements[t.key].length})
                   </button>
                 ))}
+              </div>
               </div>
             </div>
             <ElementRows rows={report.elements[tab]} />
