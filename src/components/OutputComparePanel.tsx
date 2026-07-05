@@ -356,6 +356,7 @@ export function OutputComparePanel() {
                   </button>
                 ))}
               </div>
+              </div>
             </div>
             <ElementRows rows={report.elements[tab]} />
           </div>
