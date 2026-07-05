@@ -25,7 +25,7 @@ const STATUS_TONE: Record<string, string> = {
   "only-b": "text-destructive",
 };
 
-function ElementRows({ rows, focusId }: { rows: OutputElementDiff[]; focusId?: string | null }) {
+function ElementRows({ rows, focusId, focusPulse }: { rows: OutputElementDiff[]; focusId?: string | null; focusPulse?: number }) {
   const [open, setOpen] = useState<string | null>(null);
   const itemRefs = useRef<Map<string, HTMLLIElement>>(new Map());
 
@@ -34,7 +34,7 @@ function ElementRows({ rows, focusId }: { rows: OutputElementDiff[]; focusId?: s
     setOpen(focusId);
     const el = itemRefs.current.get(focusId);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [focusId]);
+  }, [focusId, focusPulse]);
 
   if (rows.length === 0) {
     return <div className="py-3 text-center text-xs text-muted-foreground">No elements reported.</div>;
