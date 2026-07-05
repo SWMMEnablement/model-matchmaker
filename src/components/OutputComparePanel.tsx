@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ParsedRpt } from "@/lib/swmm/parseRpt";
 import { parseAnyRpt, type RptFormat } from "@/lib/swmm/parseAnyRpt";
 import {
@@ -9,7 +9,7 @@ import {
   type OutputElementDiff,
 } from "@/lib/swmm/outputCompare";
 import { RPT_FIXTURES, type RptFixture } from "@/lib/swmm/rptFixtures";
-import { downloadOutputCsv, downloadCurrentViewCsv } from "@/lib/swmm/outputCsv";
+import { downloadOutputCsv, downloadCurrentViewCsv, downloadCurrentViewJson, type ViewState } from "@/lib/swmm/outputCsv";
 
 interface LoadedRpt { name: string; parsed: ParsedRpt; format: RptFormat; }
 
@@ -25,8 +25,17 @@ const STATUS_TONE: Record<string, string> = {
   "only-b": "text-destructive",
 };
 
-function ElementRows({ rows }: { rows: OutputElementDiff[] }) {
+function ElementRows({ rows, focusId, focusPulse }: { rows: OutputElementDiff[]; focusId?: string | null; focusPulse?: number }) {
   const [open, setOpen] = useState<string | null>(null);
+  const itemRefs = useRef<Map<string, HTMLLIElement>>(new Map());
+
+  useEffect(() => {
+    if (!focusId) return;
+    setOpen(focusId);
+    const el = itemRefs.current.get(focusId);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focusId, focusPulse]);
+
   if (rows.length === 0) {
     return <div className="py-3 text-center text-xs text-muted-foreground">No elements reported.</div>;
   }
@@ -34,17 +43,34 @@ function ElementRows({ rows }: { rows: OutputElementDiff[] }) {
     <ul className="divide-y divide-border/40">
       {rows.map((r) => {
         const isOpen = open === r.id;
+        const isFocused = focusId === r.id;
         const tone =
           r.status === "only-a" || r.status === "only-b" ? "text-destructive" :
           r.differs === 0 ? "text-success" : "text-warning";
+        const statusLabel =
+          r.status === "match" ? "matched" :
+          r.status === "differ" ? "differed" :
+          r.status === "only-a" ? "only in A" : "only in B";
         return (
-          <li key={r.id}>
+          <li
+            key={r.id}
+            ref={(node) => {
+              if (node) itemRefs.current.set(r.id, node);
+              else itemRefs.current.delete(r.id);
+            }}
+            className={isFocused ? "rounded ring-2 ring-primary/70 bg-primary/5" : ""}
+          >
             <button
               type="button"
               onClick={() => setOpen(isOpen ? null : r.id)}
               className="flex w-full items-center gap-3 py-2 text-left text-sm hover:bg-secondary/40 px-2 rounded cursor-pointer"
             >
               <span className="font-mono text-xs text-primary w-24 truncate">{r.id}</span>
+              {isFocused && (
+                <span className="rounded border border-primary/50 bg-primary/15 px-1.5 py-0.5 font-mono text-[10px] text-primary uppercase">
+                  worst · {statusLabel}
+                </span>
+              )}
               <span className={`text-xs font-mono ${tone}`}>
                 {r.matched} match · {r.differs} differ
               </span>
@@ -176,6 +202,8 @@ export function OutputComparePanel() {
   const [statusFilter, setStatusFilter] = useState<"all" | "differ" | "match" | "only-a" | "only-b">("all");
   const [sortBy, setSortBy] = useState<"id" | "worst-desc" | "worst-asc" | "differs-desc">("worst-desc");
   const [error, setError] = useState<string | null>(null);
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const [focusPulse, setFocusPulse] = useState(0);
 
   const pick = useCallback((side: "a" | "b") => async (f: File) => {
     try {
@@ -230,7 +258,21 @@ export function OutputComparePanel() {
     return rows;
   }, [report, tab, search, statusFilter, sortBy]);
 
-  const filterLabel = `tab=${tab}; search="${search}"; status=${statusFilter}; sort=${sortBy}`;
+  const viewState: ViewState = { tab, search, statusFilter, sortBy };
+
+  const worstInView = useMemo<OutputElementDiff | null>(() => {
+    let best: OutputElementDiff | null = null;
+    for (const r of visibleRows) {
+      if (!best || r.worstPct > best.worstPct) best = r;
+    }
+    return best;
+  }, [visibleRows]);
+
+  const jumpToWorst = useCallback(() => {
+    if (!worstInView) return;
+    setFocusId(worstInView.id);
+    setFocusPulse((n) => n + 1);
+  }, [worstInView]);
 
   const formatMix = a && b && a.format !== b.format
     ? `${a.format} vs ${b.format} — comparing outputs across simulators; treat the score as a rough congruence check, not a calibration metric.`
@@ -367,22 +409,39 @@ export function OutputComparePanel() {
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => downloadOutputCsv(report, `output-diff-${a?.name ?? "a"}-vs-${b?.name ?? "b"}.csv`)}
+                  onClick={() => downloadOutputCsv(
+                    report,
+                    `output-diff-${a?.name ?? "a"}-vs-${b?.name ?? "b"}.csv`,
+                    tol,
+                  )}
                   className="rounded-md border border-border bg-secondary px-3 py-1 text-xs font-mono hover:bg-secondary/80 cursor-pointer"
                   title="Export the full report — all kinds, unfiltered — with a summary header."
                 >
-                  ↓ Export all
+                  ↓ Export all (CSV)
                 </button>
                 <button
                   type="button"
                   onClick={() => downloadCurrentViewCsv(
-                    report, visibleRows, activeKind, filterLabel,
+                    report, visibleRows, activeKind, viewState,
                     `output-diff-${activeKind}-view.csv`,
+                    tol,
                   )}
                   className="rounded-md border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-mono text-primary hover:bg-primary/20 cursor-pointer"
-                  title="Export only the rows currently visible after search / filter / sort."
+                  title="Export only the rows currently visible after search / filter / sort. Includes tolerance and view state in the summary block."
                 >
-                  ↓ Export current view ({visibleRows.length})
+                  ↓ Export current view CSV ({visibleRows.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => downloadCurrentViewJson(
+                    report, visibleRows, activeKind, viewState,
+                    `output-diff-${activeKind}-view.json`,
+                    tol,
+                  )}
+                  className="rounded-md border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-mono text-primary hover:bg-primary/20 cursor-pointer"
+                  title="Export current view as a structured JSON report — per-element A/B values and deltas plus context."
+                >
+                  ↓ Export current view JSON
                 </button>
                 <div className="flex gap-1 rounded-md border border-border p-1">
                   {OUTPUT_TABS.map((t) => (
@@ -433,10 +492,26 @@ export function OutputComparePanel() {
               <span className="text-xs text-muted-foreground">
                 Showing {visibleRows.length} of {report.elements[tab].length}
               </span>
+              <button
+                type="button"
+                onClick={jumpToWorst}
+                disabled={!worstInView}
+                className="ml-auto rounded-md border border-warning/50 bg-warning/10 px-3 py-1 text-xs font-mono text-warning hover:bg-warning/20 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Scroll to and highlight the element with the largest relative error in the current filtered/sorted view."
+              >
+                {worstInView
+                  ? `⤒ Jump to worst · ${worstInView.id} (${(worstInView.worstPct * 100).toFixed(1)}% · ${
+                      worstInView.status === "match" ? "matched"
+                      : worstInView.status === "differ" ? "differed"
+                      : worstInView.status === "only-a" ? "only in A" : "only in B"
+                    })`
+                  : "⤒ Jump to worst"}
+              </button>
             </div>
 
-            <ElementRows rows={visibleRows} />
+            <ElementRows rows={visibleRows} focusId={focusId} focusPulse={focusPulse} />
           </div>
+
 
         </>
       )}

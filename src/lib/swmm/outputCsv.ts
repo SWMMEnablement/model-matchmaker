@@ -1,5 +1,6 @@
-// CSV export for output comparison diffs.
+// CSV + JSON export for output comparison diffs.
 import type { OutputReport, OutputElementDiff } from "./outputCompare";
+import type { OutputTolerances } from "./outputCompare";
 
 const esc = (v: unknown): string => {
   if (v === null || v === undefined) return "";
@@ -55,10 +56,18 @@ function statsFor(kind: string, els: OutputElementDiff[]): KindStats {
   return { kind, total: els.length, matched, differed, onlyA, onlyB, worstId, worstPct };
 }
 
+export interface ViewState {
+  tab?: string;
+  search?: string;
+  statusFilter?: string;
+  sortBy?: string;
+}
+
 interface ExportOptions {
   scope: "all" | "current-view";
   activeKind?: "node" | "link" | "subcatchment";
-  filterLabel?: string;
+  view?: ViewState;
+  tolerances?: OutputTolerances;
 }
 
 function buildSummary(
@@ -68,9 +77,28 @@ function buildSummary(
 ): string[][] {
   const rows: string[][] = [];
   rows.push(["# Output similarity export"]);
+  rows.push(["# Generated", new Date().toISOString()]);
   rows.push(["# Scope", opts.scope]);
-  if (opts.filterLabel) rows.push(["# Filter", opts.filterLabel]);
   rows.push(["# Overall score", String(report.overall), "/ 1000"]);
+
+  if (opts.view) {
+    rows.push([]);
+    rows.push(["# View state"]);
+    rows.push(["#", "Active tab", opts.view.tab ?? ""]);
+    rows.push(["#", "Search", opts.view.search ?? ""]);
+    rows.push(["#", "Status filter", opts.view.statusFilter ?? ""]);
+    rows.push(["#", "Sort", opts.view.sortBy ?? ""]);
+  }
+
+  if (opts.tolerances) {
+    rows.push([]);
+    rows.push(["# Tolerances"]);
+    rows.push(["#", "Node depth Δ %", String(opts.tolerances.depthPct)]);
+    rows.push(["#", "Link flow Δ %", String(opts.tolerances.flowPct)]);
+    rows.push(["#", "Sub runoff Δ %", String(opts.tolerances.runoffPct)]);
+    rows.push(["#", "Continuity Δ % abs", String(opts.tolerances.continuityPct)]);
+  }
+
   rows.push([]);
   rows.push(["# Category", "Score", "RMS rel. err %", "Elements"]);
   for (const c of report.categories) {
@@ -96,8 +124,8 @@ function serialise(rows: string[][]): string {
   return rows.map((r) => r.map(esc).join(",")).join("\n");
 }
 
-function triggerDownload(csv: string, filename: string): void {
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+function triggerDownload(content: string, filename: string, mime: string): void {
+  const blob = new Blob([content], { type: `${mime};charset=utf-8` });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -111,13 +139,13 @@ function triggerDownload(csv: string, filename: string): void {
 /**
  * Export the entire report (all kinds, unfiltered) with a summary header.
  */
-export function outputReportToCsv(report: OutputReport): string {
+export function outputReportToCsv(report: OutputReport, tolerances?: OutputTolerances): string {
   const perKind: KindStats[] = [
     statsFor("node", report.elements.nodes),
     statsFor("link", report.elements.links),
     statsFor("subcatchment", report.elements.subcatchments),
   ];
-  const rows = buildSummary(report, perKind, { scope: "all" });
+  const rows = buildSummary(report, perKind, { scope: "all", tolerances });
   rows.push(HEADER);
   rows.push(...rowsFor("node", report.elements.nodes));
   rows.push(...rowsFor("link", report.elements.links));
@@ -125,8 +153,12 @@ export function outputReportToCsv(report: OutputReport): string {
   return serialise(rows);
 }
 
-export function downloadOutputCsv(report: OutputReport, filename = "output-diff.csv"): void {
-  triggerDownload(outputReportToCsv(report), filename);
+export function downloadOutputCsv(
+  report: OutputReport,
+  filename = "output-diff.csv",
+  tolerances?: OutputTolerances,
+): void {
+  triggerDownload(outputReportToCsv(report, tolerances), filename, "text/csv");
 }
 
 /**
@@ -138,7 +170,8 @@ export function outputCurrentViewToCsv(
   report: OutputReport,
   visible: OutputElementDiff[],
   activeKind: "node" | "link" | "subcatchment",
-  filterLabel: string,
+  view: ViewState,
+  tolerances?: OutputTolerances,
 ): string {
   const visibleStats = statsFor(activeKind, visible);
   const other: KindStats[] = (
@@ -152,7 +185,7 @@ export function outputCurrentViewToCsv(
   const rows = buildSummary(report, [
     { ...visibleStats, kind: `${activeKind} (visible)` },
     ...other,
-  ], { scope: "current-view", activeKind, filterLabel });
+  ], { scope: "current-view", activeKind, view, tolerances });
   rows.push(HEADER);
   rows.push(...rowsFor(activeKind, visible));
   return serialise(rows);
@@ -162,8 +195,77 @@ export function downloadCurrentViewCsv(
   report: OutputReport,
   visible: OutputElementDiff[],
   activeKind: "node" | "link" | "subcatchment",
-  filterLabel: string,
+  view: ViewState,
   filename = "output-diff-view.csv",
+  tolerances?: OutputTolerances,
 ): void {
-  triggerDownload(outputCurrentViewToCsv(report, visible, activeKind, filterLabel), filename);
+  triggerDownload(
+    outputCurrentViewToCsv(report, visible, activeKind, view, tolerances),
+    filename,
+    "text/csv",
+  );
+}
+
+/**
+ * JSON export of the currently-visible rows, including per-element props with
+ * A/B values and deltas, plus the summary/view/tolerance context.
+ */
+export function outputCurrentViewToJson(
+  report: OutputReport,
+  visible: OutputElementDiff[],
+  activeKind: "node" | "link" | "subcatchment",
+  view: ViewState,
+  tolerances?: OutputTolerances,
+): string {
+  const visibleStats = statsFor(activeKind, visible);
+  const payload = {
+    generatedAt: new Date().toISOString(),
+    scope: "current-view" as const,
+    overall: report.overall,
+    categories: report.categories,
+    continuity: report.continuity,
+    tolerances: tolerances ?? null,
+    view,
+    activeKind,
+    stats: {
+      visible: visibleStats,
+      full: {
+        node: statsFor("node", report.elements.nodes),
+        link: statsFor("link", report.elements.links),
+        subcatchment: statsFor("subcatchment", report.elements.subcatchments),
+      },
+    },
+    elements: visible.map((e) => ({
+      id: e.id,
+      kind: e.kind,
+      status: e.status,
+      matched: e.matched,
+      differs: e.differs,
+      worstRelErrPct: e.worstPct * 100,
+      properties: e.props.map((p) => ({
+        name: p.name,
+        status: p.status,
+        a: p.a,
+        b: p.b,
+        delta: p.delta,
+        relErrPct: p.pct * 100,
+      })),
+    })),
+  };
+  return JSON.stringify(payload, null, 2);
+}
+
+export function downloadCurrentViewJson(
+  report: OutputReport,
+  visible: OutputElementDiff[],
+  activeKind: "node" | "link" | "subcatchment",
+  view: ViewState,
+  filename = "output-diff-view.json",
+  tolerances?: OutputTolerances,
+): void {
+  triggerDownload(
+    outputCurrentViewToJson(report, visible, activeKind, view, tolerances),
+    filename,
+    "application/json",
+  );
 }
