@@ -17,6 +17,13 @@ export function SiteHeader() {
             Compare
           </Link>
           <Link
+            to="/batch"
+            className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            activeProps={{ className: "rounded-md px-3 py-1.5 bg-secondary text-foreground" }}
+          >
+            Batch
+          </Link>
+          <Link
             to="/methodology"
             className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             activeProps={{ className: "rounded-md px-3 py-1.5 bg-secondary text-foreground" }}
