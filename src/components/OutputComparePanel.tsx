@@ -206,9 +206,36 @@ export function OutputComparePanel() {
     catch (e) { setError(e instanceof Error ? e.message : "Output compare failed"); return null; }
   }, [a, b, tol]);
 
+  const activeKind: "node" | "link" | "subcatchment" =
+    tab === "nodes" ? "node" : tab === "links" ? "link" : "subcatchment";
+
+  const visibleRows = useMemo<OutputElementDiff[]>(() => {
+    if (!report) return [];
+    const q = search.trim().toLowerCase();
+    let rows = report.elements[tab].filter((r) => {
+      if (q && !r.id.toLowerCase().includes(q)) return false;
+      if (statusFilter === "all") return true;
+      if (statusFilter === "differ") return r.status === "differ";
+      return r.status === statusFilter;
+    });
+    rows = [...rows].sort((x, y) => {
+      switch (sortBy) {
+        case "id":            return x.id.localeCompare(y.id);
+        case "worst-asc":     return x.worstPct - y.worstPct;
+        case "differs-desc":  return y.differs - x.differs || y.worstPct - x.worstPct;
+        case "worst-desc":
+        default:              return y.worstPct - x.worstPct;
+      }
+    });
+    return rows;
+  }, [report, tab, search, statusFilter, sortBy]);
+
+  const filterLabel = `tab=${tab}; search="${search}"; status=${statusFilter}; sort=${sortBy}`;
+
   const formatMix = a && b && a.format !== b.format
     ? `${a.format} vs ${b.format} — comparing outputs across simulators; treat the score as a rough congruence check, not a calibration metric.`
     : null;
+
 
   return (
     <section className="mt-10 rounded-lg border border-border bg-card/40 p-5">
