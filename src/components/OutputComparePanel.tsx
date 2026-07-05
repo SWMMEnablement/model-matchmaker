@@ -9,7 +9,7 @@ import {
   type OutputElementDiff,
 } from "@/lib/swmm/outputCompare";
 import { RPT_FIXTURES, type RptFixture } from "@/lib/swmm/rptFixtures";
-import { downloadOutputCsv } from "@/lib/swmm/outputCsv";
+import { downloadOutputCsv, downloadCurrentViewCsv } from "@/lib/swmm/outputCsv";
 
 interface LoadedRpt { name: string; parsed: ParsedRpt; format: RptFormat; }
 
@@ -172,6 +172,9 @@ export function OutputComparePanel() {
   const [b, setB] = useState<LoadedRpt | null>(null);
   const [tol, setTol] = useState<OutputTolerances>({ ...DEFAULT_OUTPUT_TOLERANCES });
   const [tab, setTab] = useState<"nodes" | "links" | "subcatchments">("nodes");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "differ" | "match" | "only-a" | "only-b">("all");
+  const [sortBy, setSortBy] = useState<"id" | "worst-desc" | "worst-asc" | "differs-desc">("worst-desc");
   const [error, setError] = useState<string | null>(null);
 
   const pick = useCallback((side: "a" | "b") => async (f: File) => {
@@ -203,9 +206,36 @@ export function OutputComparePanel() {
     catch (e) { setError(e instanceof Error ? e.message : "Output compare failed"); return null; }
   }, [a, b, tol]);
 
+  const activeKind: "node" | "link" | "subcatchment" =
+    tab === "nodes" ? "node" : tab === "links" ? "link" : "subcatchment";
+
+  const visibleRows = useMemo<OutputElementDiff[]>(() => {
+    if (!report) return [];
+    const q = search.trim().toLowerCase();
+    let rows = report.elements[tab].filter((r) => {
+      if (q && !r.id.toLowerCase().includes(q)) return false;
+      if (statusFilter === "all") return true;
+      if (statusFilter === "differ") return r.status === "differ";
+      return r.status === statusFilter;
+    });
+    rows = [...rows].sort((x, y) => {
+      switch (sortBy) {
+        case "id":            return x.id.localeCompare(y.id);
+        case "worst-asc":     return x.worstPct - y.worstPct;
+        case "differs-desc":  return y.differs - x.differs || y.worstPct - x.worstPct;
+        case "worst-desc":
+        default:              return y.worstPct - x.worstPct;
+      }
+    });
+    return rows;
+  }, [report, tab, search, statusFilter, sortBy]);
+
+  const filterLabel = `tab=${tab}; search="${search}"; status=${statusFilter}; sort=${sortBy}`;
+
   const formatMix = a && b && a.format !== b.format
     ? `${a.format} vs ${b.format} — comparing outputs across simulators; treat the score as a rough congruence check, not a calibration metric.`
     : null;
+
 
   return (
     <section className="mt-10 rounded-lg border border-border bg-card/40 p-5">
@@ -330,36 +360,84 @@ export function OutputComparePanel() {
           </div>
 
           <div className="mt-5">
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
                 Per-element output diff
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => downloadOutputCsv(report, `output-diff-${a?.name ?? "a"}-vs-${b?.name ?? "b"}.csv`)}
-                  className="rounded-md border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-mono text-primary hover:bg-primary/20 cursor-pointer"
+                  className="rounded-md border border-border bg-secondary px-3 py-1 text-xs font-mono hover:bg-secondary/80 cursor-pointer"
+                  title="Export the full report — all kinds, unfiltered — with a summary header."
                 >
-                  ↓ Export CSV
+                  ↓ Export all
                 </button>
-              <div className="flex gap-1 rounded-md border border-border p-1">
-                {OUTPUT_TABS.map((t) => (
-                  <button
-                    key={t.key}
-                    type="button"
-                    onClick={() => setTab(t.key)}
-                    className={`rounded px-3 py-1 text-xs font-mono cursor-pointer ${
-                      tab === t.key ? "bg-primary/20 text-primary" : "text-muted-foreground hover:bg-secondary"
-                    }`}
-                  >
-                    {t.label} ({report.elements[t.key].length})
-                  </button>
-                ))}
-              </div>
+                <button
+                  type="button"
+                  onClick={() => downloadCurrentViewCsv(
+                    report, visibleRows, activeKind, filterLabel,
+                    `output-diff-${activeKind}-view.csv`,
+                  )}
+                  className="rounded-md border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-mono text-primary hover:bg-primary/20 cursor-pointer"
+                  title="Export only the rows currently visible after search / filter / sort."
+                >
+                  ↓ Export current view ({visibleRows.length})
+                </button>
+                <div className="flex gap-1 rounded-md border border-border p-1">
+                  {OUTPUT_TABS.map((t) => (
+                    <button
+                      key={t.key}
+                      type="button"
+                      onClick={() => setTab(t.key)}
+                      className={`rounded px-3 py-1 text-xs font-mono cursor-pointer ${
+                        tab === t.key ? "bg-primary/20 text-primary" : "text-muted-foreground hover:bg-secondary"
+                      }`}
+                    >
+                      {t.label} ({report.elements[t.key].length})
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-            <ElementRows rows={report.elements[tab]} />
+
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by ID…"
+                className="rounded-md border border-border bg-input px-2 py-1 font-mono text-xs w-48"
+              />
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+                className="rounded-md border border-border bg-input px-2 py-1 font-mono text-xs cursor-pointer"
+              >
+                <option value="all">All statuses</option>
+                <option value="differ">Differ only</option>
+                <option value="match">Match only</option>
+                <option value="only-a">Only in A</option>
+                <option value="only-b">Only in B</option>
+              </select>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                className="rounded-md border border-border bg-input px-2 py-1 font-mono text-xs cursor-pointer"
+              >
+                <option value="worst-desc">Sort: worst Δ ↓</option>
+                <option value="worst-asc">Sort: worst Δ ↑</option>
+                <option value="differs-desc">Sort: most differs</option>
+                <option value="id">Sort: ID (A→Z)</option>
+              </select>
+              <span className="text-xs text-muted-foreground">
+                Showing {visibleRows.length} of {report.elements[tab].length}
+              </span>
+            </div>
+
+            <ElementRows rows={visibleRows} />
           </div>
+
         </>
       )}
     </section>
