@@ -9,7 +9,7 @@ import {
   type OutputElementDiff,
 } from "@/lib/swmm/outputCompare";
 import { RPT_FIXTURES, type RptFixture } from "@/lib/swmm/rptFixtures";
-import { downloadOutputCsv } from "@/lib/swmm/outputCsv";
+import { downloadOutputCsv, downloadCurrentViewCsv } from "@/lib/swmm/outputCsv";
 
 interface LoadedRpt { name: string; parsed: ParsedRpt; format: RptFormat; }
 
