@@ -492,10 +492,26 @@ export function OutputComparePanel() {
               <span className="text-xs text-muted-foreground">
                 Showing {visibleRows.length} of {report.elements[tab].length}
               </span>
+              <button
+                type="button"
+                onClick={jumpToWorst}
+                disabled={!worstInView}
+                className="ml-auto rounded-md border border-warning/50 bg-warning/10 px-3 py-1 text-xs font-mono text-warning hover:bg-warning/20 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Scroll to and highlight the element with the largest relative error in the current filtered/sorted view."
+              >
+                {worstInView
+                  ? `⤒ Jump to worst · ${worstInView.id} (${(worstInView.worstPct * 100).toFixed(1)}% · ${
+                      worstInView.status === "match" ? "matched"
+                      : worstInView.status === "differ" ? "differed"
+                      : worstInView.status === "only-a" ? "only in A" : "only in B"
+                    })`
+                  : "⤒ Jump to worst"}
+              </button>
             </div>
 
-            <ElementRows rows={visibleRows} />
+            <ElementRows rows={visibleRows} focusId={focusId} focusPulse={focusPulse} />
           </div>
+
 
         </>
       )}
