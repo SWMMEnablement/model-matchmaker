@@ -172,6 +172,9 @@ export function OutputComparePanel() {
   const [b, setB] = useState<LoadedRpt | null>(null);
   const [tol, setTol] = useState<OutputTolerances>({ ...DEFAULT_OUTPUT_TOLERANCES });
   const [tab, setTab] = useState<"nodes" | "links" | "subcatchments">("nodes");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "differ" | "match" | "only-a" | "only-b">("all");
+  const [sortBy, setSortBy] = useState<"id" | "worst-desc" | "worst-asc" | "differs-desc">("worst-desc");
   const [error, setError] = useState<string | null>(null);
 
   const pick = useCallback((side: "a" | "b") => async (f: File) => {
