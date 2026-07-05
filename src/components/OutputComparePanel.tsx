@@ -25,8 +25,17 @@ const STATUS_TONE: Record<string, string> = {
   "only-b": "text-destructive",
 };
 
-function ElementRows({ rows }: { rows: OutputElementDiff[] }) {
+function ElementRows({ rows, focusId }: { rows: OutputElementDiff[]; focusId?: string | null }) {
   const [open, setOpen] = useState<string | null>(null);
+  const itemRefs = useRef<Map<string, HTMLLIElement>>(new Map());
+
+  useEffect(() => {
+    if (!focusId) return;
+    setOpen(focusId);
+    const el = itemRefs.current.get(focusId);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focusId]);
+
   if (rows.length === 0) {
     return <div className="py-3 text-center text-xs text-muted-foreground">No elements reported.</div>;
   }
@@ -34,17 +43,34 @@ function ElementRows({ rows }: { rows: OutputElementDiff[] }) {
     <ul className="divide-y divide-border/40">
       {rows.map((r) => {
         const isOpen = open === r.id;
+        const isFocused = focusId === r.id;
         const tone =
           r.status === "only-a" || r.status === "only-b" ? "text-destructive" :
           r.differs === 0 ? "text-success" : "text-warning";
+        const statusLabel =
+          r.status === "match" ? "matched" :
+          r.status === "differ" ? "differed" :
+          r.status === "only-a" ? "only in A" : "only in B";
         return (
-          <li key={r.id}>
+          <li
+            key={r.id}
+            ref={(node) => {
+              if (node) itemRefs.current.set(r.id, node);
+              else itemRefs.current.delete(r.id);
+            }}
+            className={isFocused ? "rounded ring-2 ring-primary/70 bg-primary/5" : ""}
+          >
             <button
               type="button"
               onClick={() => setOpen(isOpen ? null : r.id)}
               className="flex w-full items-center gap-3 py-2 text-left text-sm hover:bg-secondary/40 px-2 rounded cursor-pointer"
             >
               <span className="font-mono text-xs text-primary w-24 truncate">{r.id}</span>
+              {isFocused && (
+                <span className="rounded border border-primary/50 bg-primary/15 px-1.5 py-0.5 font-mono text-[10px] text-primary uppercase">
+                  worst · {statusLabel}
+                </span>
+              )}
               <span className={`text-xs font-mono ${tone}`}>
                 {r.matched} match · {r.differs} differ
               </span>
