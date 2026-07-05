@@ -197,7 +197,7 @@ function BatchPage() {
         if (isInp(rel)) {
           const text = await f.text();
           const parsed = parseAny(text);
-          okInp.push({ name: rel, parsed: parsed.inp, format: parsed.format });
+          okInp.push({ name: rel, parsed: parsed.parsed, format: parsed.format });
         } else if (isRpt(rel)) {
           const text = await f.text();
           const parsed = parseAnyRpt(text);
