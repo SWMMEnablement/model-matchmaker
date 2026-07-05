@@ -409,22 +409,39 @@ export function OutputComparePanel() {
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => downloadOutputCsv(report, `output-diff-${a?.name ?? "a"}-vs-${b?.name ?? "b"}.csv`)}
+                  onClick={() => downloadOutputCsv(
+                    report,
+                    `output-diff-${a?.name ?? "a"}-vs-${b?.name ?? "b"}.csv`,
+                    tol,
+                  )}
                   className="rounded-md border border-border bg-secondary px-3 py-1 text-xs font-mono hover:bg-secondary/80 cursor-pointer"
                   title="Export the full report — all kinds, unfiltered — with a summary header."
                 >
-                  ↓ Export all
+                  ↓ Export all (CSV)
                 </button>
                 <button
                   type="button"
                   onClick={() => downloadCurrentViewCsv(
-                    report, visibleRows, activeKind, filterLabel,
+                    report, visibleRows, activeKind, viewState,
                     `output-diff-${activeKind}-view.csv`,
+                    tol,
                   )}
                   className="rounded-md border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-mono text-primary hover:bg-primary/20 cursor-pointer"
-                  title="Export only the rows currently visible after search / filter / sort."
+                  title="Export only the rows currently visible after search / filter / sort. Includes tolerance and view state in the summary block."
                 >
-                  ↓ Export current view ({visibleRows.length})
+                  ↓ Export current view CSV ({visibleRows.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => downloadCurrentViewJson(
+                    report, visibleRows, activeKind, viewState,
+                    `output-diff-${activeKind}-view.json`,
+                    tol,
+                  )}
+                  className="rounded-md border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-mono text-primary hover:bg-primary/20 cursor-pointer"
+                  title="Export current view as a structured JSON report — per-element A/B values and deltas plus context."
+                >
+                  ↓ Export current view JSON
                 </button>
                 <div className="flex gap-1 rounded-md border border-border p-1">
                   {OUTPUT_TABS.map((t) => (
