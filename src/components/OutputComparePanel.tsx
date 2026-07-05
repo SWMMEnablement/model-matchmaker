@@ -360,36 +360,84 @@ export function OutputComparePanel() {
           </div>
 
           <div className="mt-5">
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
                 Per-element output diff
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => downloadOutputCsv(report, `output-diff-${a?.name ?? "a"}-vs-${b?.name ?? "b"}.csv`)}
-                  className="rounded-md border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-mono text-primary hover:bg-primary/20 cursor-pointer"
+                  className="rounded-md border border-border bg-secondary px-3 py-1 text-xs font-mono hover:bg-secondary/80 cursor-pointer"
+                  title="Export the full report — all kinds, unfiltered — with a summary header."
                 >
-                  ↓ Export CSV
+                  ↓ Export all
                 </button>
-              <div className="flex gap-1 rounded-md border border-border p-1">
-                {OUTPUT_TABS.map((t) => (
-                  <button
-                    key={t.key}
-                    type="button"
-                    onClick={() => setTab(t.key)}
-                    className={`rounded px-3 py-1 text-xs font-mono cursor-pointer ${
-                      tab === t.key ? "bg-primary/20 text-primary" : "text-muted-foreground hover:bg-secondary"
-                    }`}
-                  >
-                    {t.label} ({report.elements[t.key].length})
-                  </button>
-                ))}
-              </div>
+                <button
+                  type="button"
+                  onClick={() => downloadCurrentViewCsv(
+                    report, visibleRows, activeKind, filterLabel,
+                    `output-diff-${activeKind}-view.csv`,
+                  )}
+                  className="rounded-md border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-mono text-primary hover:bg-primary/20 cursor-pointer"
+                  title="Export only the rows currently visible after search / filter / sort."
+                >
+                  ↓ Export current view ({visibleRows.length})
+                </button>
+                <div className="flex gap-1 rounded-md border border-border p-1">
+                  {OUTPUT_TABS.map((t) => (
+                    <button
+                      key={t.key}
+                      type="button"
+                      onClick={() => setTab(t.key)}
+                      className={`rounded px-3 py-1 text-xs font-mono cursor-pointer ${
+                        tab === t.key ? "bg-primary/20 text-primary" : "text-muted-foreground hover:bg-secondary"
+                      }`}
+                    >
+                      {t.label} ({report.elements[t.key].length})
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-            <ElementRows rows={report.elements[tab]} />
+
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by ID…"
+                className="rounded-md border border-border bg-input px-2 py-1 font-mono text-xs w-48"
+              />
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+                className="rounded-md border border-border bg-input px-2 py-1 font-mono text-xs cursor-pointer"
+              >
+                <option value="all">All statuses</option>
+                <option value="differ">Differ only</option>
+                <option value="match">Match only</option>
+                <option value="only-a">Only in A</option>
+                <option value="only-b">Only in B</option>
+              </select>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                className="rounded-md border border-border bg-input px-2 py-1 font-mono text-xs cursor-pointer"
+              >
+                <option value="worst-desc">Sort: worst Δ ↓</option>
+                <option value="worst-asc">Sort: worst Δ ↑</option>
+                <option value="differs-desc">Sort: most differs</option>
+                <option value="id">Sort: ID (A→Z)</option>
+              </select>
+              <span className="text-xs text-muted-foreground">
+                Showing {visibleRows.length} of {report.elements[tab].length}
+              </span>
+            </div>
+
+            <ElementRows rows={visibleRows} />
           </div>
+
         </>
       )}
     </section>
