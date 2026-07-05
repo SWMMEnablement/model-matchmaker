@@ -202,6 +202,8 @@ export function OutputComparePanel() {
   const [statusFilter, setStatusFilter] = useState<"all" | "differ" | "match" | "only-a" | "only-b">("all");
   const [sortBy, setSortBy] = useState<"id" | "worst-desc" | "worst-asc" | "differs-desc">("worst-desc");
   const [error, setError] = useState<string | null>(null);
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const [focusPulse, setFocusPulse] = useState(0);
 
   const pick = useCallback((side: "a" | "b") => async (f: File) => {
     try {
