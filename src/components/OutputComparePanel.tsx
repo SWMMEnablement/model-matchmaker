@@ -258,7 +258,21 @@ export function OutputComparePanel() {
     return rows;
   }, [report, tab, search, statusFilter, sortBy]);
 
-  const filterLabel = `tab=${tab}; search="${search}"; status=${statusFilter}; sort=${sortBy}`;
+  const viewState: ViewState = { tab, search, statusFilter, sortBy };
+
+  const worstInView = useMemo<OutputElementDiff | null>(() => {
+    let best: OutputElementDiff | null = null;
+    for (const r of visibleRows) {
+      if (!best || r.worstPct > best.worstPct) best = r;
+    }
+    return best;
+  }, [visibleRows]);
+
+  const jumpToWorst = useCallback(() => {
+    if (!worstInView) return;
+    setFocusId(worstInView.id);
+    setFocusPulse((n) => n + 1);
+  }, [worstInView]);
 
   const formatMix = a && b && a.format !== b.format
     ? `${a.format} vs ${b.format} — comparing outputs across simulators; treat the score as a rough congruence check, not a calibration metric.`
