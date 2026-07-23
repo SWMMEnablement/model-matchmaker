@@ -1,7 +1,7 @@
 // Element-level exports for a single INP-vs-INP pair, used by the batch
 // page's pair-inspection modal.
 import type { ComponentDetails, ComponentDiff } from "./details";
-import type { ScoreResult } from "./score";
+import type { SimilarityReport } from "./score";
 
 const esc = (v: unknown): string => {
   const s = v == null ? "" : String(v);
