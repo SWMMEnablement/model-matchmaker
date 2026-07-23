@@ -30,9 +30,12 @@ function rowsFor(kind: string, els: ComponentDiff[]): string[][] {
 export function inpPairToCsv(
   nameA: string,
   nameB: string,
-  score: ScoreResult,
+  score: SimilarityReport,
   details: ComponentDetails,
 ): string {
+  const catRows = Object.entries(score.categoryScores).map(
+    ([k, v]) => `${esc(k)},${v}`,
+  );
   const header = [
     `# Pair element-level diff`,
     `# A: ${nameA}`,
@@ -42,7 +45,7 @@ export function inpPairToCsv(
     ``,
     `# Category scores`,
     `category,score`,
-    ...score.categoryScores.map((c) => `${esc(c.category)},${c.score}`),
+    ...catRows,
     ``,
     `# Per-kind summary`,
     `kind,elements,matched_properties,differed_properties`,
@@ -65,7 +68,7 @@ export function inpPairToCsv(
 export function inpPairToJson(
   nameA: string,
   nameB: string,
-  score: ScoreResult,
+  score: SimilarityReport,
   details: ComponentDetails,
 ): string {
   return JSON.stringify({
