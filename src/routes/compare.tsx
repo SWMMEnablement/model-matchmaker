@@ -381,6 +381,38 @@ function ComparePage() {
 
       <TolerancesPanel tolerances={tolerances} setTolerances={setTolerances} />
 
+      {report && (report.warnings.length > 0 || report.unitHandling.aConverted || report.unitHandling.bConverted) && (
+        <section className="mt-4 space-y-2">
+          {(report.unitHandling.aConverted || report.unitHandling.bConverted) && (
+            <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs">
+              <span className="font-mono text-primary">Unit normalization:</span>{" "}
+              <span className="text-muted-foreground">
+                A = {report.unitHandling.aSystem}
+                {report.unitHandling.aConverted ? " (converted to SI)" : ""}, B ={" "}
+                {report.unitHandling.bSystem}
+                {report.unitHandling.bConverted ? " (converted to SI)" : ""}. Lengths, elevations
+                and areas were normalized to meters / m² before scoring.
+              </span>
+            </div>
+          )}
+          {report.warnings.map((w, i) => (
+            <div
+              key={i}
+              className={`rounded-md border p-3 text-xs ${
+                w.severity === "critical"
+                  ? "border-destructive/40 bg-destructive/10 text-destructive"
+                  : "border-border bg-secondary/40 text-muted-foreground"
+              }`}
+            >
+              <div className="font-mono uppercase tracking-widest text-[10px] opacity-80">
+                {w.severity}
+              </div>
+              <div className="mt-0.5 font-medium">{w.message}</div>
+              {w.detail && <div className="mt-0.5 opacity-90">{w.detail}</div>}
+            </div>
+          ))}
+        </section>
+      )}
 
       {error && (
         <div className="mt-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">

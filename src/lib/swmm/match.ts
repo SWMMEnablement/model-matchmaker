@@ -23,7 +23,11 @@ export function matchById<T extends HasId>(a: T[], b: T[]): MatchResult<T> {
   return { pairs, onlyInA, onlyInB };
 }
 
-// Hybrid: ID first, then nearest-neighbor on coords for unmatched.
+// Symmetric spatial fallback: enumerate every (i,j) candidate within
+// tolerance, sort by (distance, sorted-id-pair), and greedily accept
+// mutually-still-available pairs. This is deterministic AND satisfies
+// matchHybrid(A,B) ≡ matchHybrid(B,A) under swap, so score(A,B) ==
+// score(B,A). The previous greedy-per-A pass depended on file order.
 export function matchHybrid<T extends HasId>(
   a: T[],
   b: T[],
@@ -32,33 +36,45 @@ export function matchHybrid<T extends HasId>(
   tolerance: number,
 ): MatchResult<T> {
   const idResult = matchById(a, b);
-  const remB = [...idResult.onlyInB];
-  const stillA: T[] = [];
-  const extraPairs: MatchedPair<T>[] = [];
+  if (idResult.onlyInA.length === 0 || idResult.onlyInB.length === 0) {
+    return idResult;
+  }
 
-  for (const x of idResult.onlyInA) {
+  interface Cand { i: number; j: number; d: number; key: string; }
+  const cands: Cand[] = [];
+  for (let i = 0; i < idResult.onlyInA.length; i++) {
+    const x = idResult.onlyInA[i];
     const cA = coordsA.get(x.id);
-    if (!cA || remB.length === 0) { stillA.push(x); continue; }
-    let best = -1;
-    let bestD = Infinity;
-    for (let i = 0; i < remB.length; i++) {
-      const cB = coordsB.get(remB[i].id);
+    if (!cA) continue;
+    for (let j = 0; j < idResult.onlyInB.length; j++) {
+      const y = idResult.onlyInB[j];
+      const cB = coordsB.get(y.id);
       if (!cB) continue;
       const d = Math.hypot(cA.x - cB.x, cA.y - cB.y);
-      if (d < bestD) { bestD = d; best = i; }
-    }
-    if (best >= 0 && bestD <= tolerance) {
-      extraPairs.push({ a: x, b: remB[best], byId: false, distance: bestD });
-      remB.splice(best, 1);
-    } else {
-      stillA.push(x);
+      if (d <= tolerance) {
+        const [k1, k2] = x.id < y.id ? [x.id, y.id] : [y.id, x.id];
+        cands.push({ i, j, d, key: `${k1}\u0000${k2}` });
+      }
     }
   }
-  return {
-    pairs: [...idResult.pairs, ...extraPairs],
-    onlyInA: stillA,
-    onlyInB: remB,
-  };
+  cands.sort((p, q) => (p.d - q.d) || (p.key < q.key ? -1 : p.key > q.key ? 1 : 0));
+
+  const usedA = new Set<number>();
+  const usedB = new Set<number>();
+  const extraPairs: MatchedPair<T>[] = [];
+  for (const c of cands) {
+    if (usedA.has(c.i) || usedB.has(c.j)) continue;
+    usedA.add(c.i); usedB.add(c.j);
+    extraPairs.push({
+      a: idResult.onlyInA[c.i],
+      b: idResult.onlyInB[c.j],
+      byId: false,
+      distance: c.d,
+    });
+  }
+  const stillA = idResult.onlyInA.filter((_, i) => !usedA.has(i));
+  const stillB = idResult.onlyInB.filter((_, j) => !usedB.has(j));
+  return { pairs: [...idResult.pairs, ...extraPairs], onlyInA: stillA, onlyInB: stillB };
 }
 
 export function coordMap(inp: ParsedInp): Map<string, SwmmCoord> {

@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { DEFAULT_WEIGHTS } from "@/lib/swmm/weights";
+import { FORMAT_SUPPORT, LEVEL_TONE } from "@/lib/swmm/support";
 
 export const Route = createFileRoute("/methodology")({
   head: () => ({
@@ -77,24 +78,73 @@ function MethodologyPage() {
 
       <h2 className="mt-10 font-display text-xl font-semibold">Score bands</h2>
       <ul className="mt-3 space-y-2 text-sm">
-        <li><span className="font-mono text-success">1000</span> — identical models.</li>
+        <li><span className="font-mono text-success">1000</span> — no detected differences within the currently-scored attributes and tolerances. Not a proof of engineering equivalence.</li>
         <li><span className="font-mono text-primary">900–999</span> — same model with minor edits or different IDs.</li>
         <li><span className="font-mono text-warning">700–899</span> — same study area, different scenario or version.</li>
         <li><span className="font-mono text-warning">500–699</span> — related but materially different.</li>
         <li><span className="font-mono text-destructive">&lt;500</span> — essentially different models.</li>
       </ul>
 
-      <h2 className="mt-10 font-display text-xl font-semibold">Adapting this to ICM or EPANET</h2>
-      <p className="mt-3 text-sm text-muted-foreground">
-        The scoring engine (<code>match.ts</code>, <code>score.ts</code>, <code>weights.ts</code>) is
-        format-agnostic — it operates on a normalized element schema. To extend:
-      </p>
-      <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-        <li><strong>SWMM ↔ SWMM:</strong> supported today.</li>
-        <li><strong>EPANET ↔ EPANET:</strong> add <code>parseEpanetInp.ts</code> emitting the same element types (nodes, links).</li>
-        <li><strong>SWMM ↔ ICM:</strong> export ICM to CSV / GeoPackage and write an adapter that maps ICM tables to the SWMM element schema.</li>
-        <li><strong>SWMM ↔ EPANET:</strong> only structural/topological similarity is meaningful — different physics.</li>
+      <h2 className="mt-10 font-display text-xl font-semibold">P0 correctness — how the math is kept honest</h2>
+      <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
+        <li>
+          <strong className="text-foreground">Symmetric percentage difference.</strong>{" "}
+          Every relative-diff deduction uses{" "}
+          <code className="text-foreground">200·|a − b| / (|a| + |b|)</code> so
+          <code> score(A, B)</code> equals <code>score(B, A)</code>. The older{" "}
+          <code>|Δ|/max</code> form biased toward whichever file happened to be uploaded as "A".
+        </li>
+        <li>
+          <strong className="text-foreground">Unit normalization to SI.</strong>{" "}
+          When <code>FLOW_UNITS</code> declares a US system (CFS/GPM/MGD), lengths, elevations,
+          depths, coordinates, cross-section geometry, and subcatchment areas are converted
+          to meters and m² before any comparison. A correctly-converted CFS-vs-CMS pair scores
+          as identical instead of losing a flat 20-point unit penalty.
+        </li>
+        <li>
+          <strong className="text-foreground">Symmetric matching.</strong>{" "}
+          The hybrid ID-then-spatial matcher enumerates every candidate pair within
+          tolerance, orders by distance and then by the sorted ID pair, and greedily
+          accepts mutually-available pairs. The result no longer depends on which file is A.
+        </li>
+        <li>
+          <strong className="text-foreground">Warnings vs. deductions.</strong>{" "}
+          Changes that flip engineering meaning (routing model, infiltration method,
+          outfall added/removed, conduit endpoint rewiring, un-normalizable units)
+          are raised as <em>warnings</em> alongside their deduction so a capped category
+          score can't hide them.
+        </li>
       </ul>
+
+      <h2 className="mt-10 font-display text-xl font-semibold">Format support</h2>
+      <p className="mt-3 text-sm text-muted-foreground">
+        This is the single source of truth for what the app actually implements today.
+        Everything else on the site defers to this table.
+      </p>
+      <div className="mt-4 overflow-x-auto rounded-lg border border-border">
+        <table className="w-full text-sm">
+          <thead className="bg-card text-xs font-mono uppercase tracking-widest text-muted-foreground">
+            <tr>
+              <th className="px-3 py-2 text-left">Format / pairing</th>
+              <th className="px-3 py-2 text-left">Support level</th>
+              <th className="px-3 py-2 text-left">Scope</th>
+            </tr>
+          </thead>
+          <tbody>
+            {FORMAT_SUPPORT.map((r) => (
+              <tr key={r.format} className="border-t border-border/40 align-top">
+                <td className="px-3 py-2 font-mono text-xs">{r.format}</td>
+                <td className="px-3 py-2">
+                  <span className={`inline-block rounded border px-2 py-0.5 font-mono text-[10px] ${LEVEL_TONE[r.level]}`}>
+                    {r.level}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-muted-foreground">{r.scope}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </main>
   );
 }

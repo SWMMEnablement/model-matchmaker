@@ -49,15 +49,26 @@ function Index() {
 
       <section className="grid gap-4 md:grid-cols-3">
         {[
-          { score: "1000", label: "Identical models", tone: "text-success" },
+          { score: "1000", label: "No detected differences (within scope & tolerance)", tone: "text-success" },
           { score: "900+", label: "Same model, light edits", tone: "text-primary" },
-          { score: "<600", label: "Different models", tone: "text-destructive" },
+          { score: "<600", label: "Materially different models", tone: "text-destructive" },
         ].map((x) => (
           <div key={x.label} className="rounded-lg border border-border bg-card p-6">
             <div className={`font-mono text-3xl font-semibold ${x.tone}`}>{x.score}</div>
             <div className="mt-1 text-sm text-muted-foreground">{x.label}</div>
           </div>
         ))}
+      </section>
+
+      <section className="mt-10 rounded-lg border border-warning/30 bg-warning/5 p-5 text-sm">
+        <div className="font-mono text-xs uppercase tracking-widest text-warning">Honest scope</div>
+        <p className="mt-2 text-muted-foreground">
+          <strong className="text-foreground">SWMM5 ↔ SWMM5 is the only fully-supported comparison.</strong>{" "}
+          EPANET support is experimental (structural only — pressurized-pipe physics is not equivalent to
+          drainage). InfoWorks ICM requires an export-profile adapter. See the{" "}
+          <Link to="/methodology" className="text-primary underline">methodology page</Link> for the
+          per-format support matrix.
+        </p>
       </section>
 
       <section className="mt-20">

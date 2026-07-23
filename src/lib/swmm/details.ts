@@ -65,8 +65,8 @@ function diffRows<T>(a: T, b: T, fields: FieldSpec<T>[]): PropRow[] {
       const d = av - bv;
       if (Math.abs(d) > (f.tol ?? 1e-6)) {
         status = "differ";
-        const denom = Math.max(Math.abs(av), Math.abs(bv));
-        const pct = denom > 0 ? (Math.abs(d) / denom) * 100 : 0;
+        const denom = Math.abs(av) + Math.abs(bv);
+        const pct = denom > 0 ? (200 * Math.abs(d)) / denom : 0;
         delta = `Δ ${d > 0 ? "+" : ""}${d.toFixed(3)} (${pct.toFixed(1)}%)`;
       }
     } else if (!eq(av, bv)) {
