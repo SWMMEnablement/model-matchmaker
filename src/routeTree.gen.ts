@@ -9,19 +9,14 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as MethodologyRouteImport } from './routes/methodology'
-import { Route as CompareRouteImport } from './routes/compare'
-import { Route as BatchRouteImport } from './routes/batch'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as BatchRouteImport } from './routes/batch'
+import { Route as CompareRouteImport } from './routes/compare'
+import { Route as MethodologyRouteImport } from './routes/methodology'
 
-const MethodologyRoute = MethodologyRouteImport.update({
-  id: '/methodology',
-  path: '/methodology',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CompareRoute = CompareRouteImport.update({
-  id: '/compare',
-  path: '/compare',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BatchRoute = BatchRouteImport.update({
@@ -29,9 +24,14 @@ const BatchRoute = BatchRouteImport.update({
   path: '/batch',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const CompareRoute = CompareRouteImport.update({
+  id: '/compare',
+  path: '/compare',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MethodologyRoute = MethodologyRouteImport.update({
+  id: '/methodology',
+  path: '/methodology',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -71,18 +71,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/methodology': {
-      id: '/methodology'
-      path: '/methodology'
-      fullPath: '/methodology'
-      preLoaderRoute: typeof MethodologyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/compare': {
-      id: '/compare'
-      path: '/compare'
-      fullPath: '/compare'
-      preLoaderRoute: typeof CompareRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/batch': {
@@ -92,11 +85,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BatchRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/compare': {
+      id: '/compare'
+      path: '/compare'
+      fullPath: '/compare'
+      preLoaderRoute: typeof CompareRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/methodology': {
+      id: '/methodology'
+      path: '/methodology'
+      fullPath: '/methodology'
+      preLoaderRoute: typeof MethodologyRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
